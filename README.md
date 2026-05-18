@@ -65,3 +65,7 @@ DuneBox-sandcam/
 ## License
 
 Retains the original license from the [sandcam](https://github.com/martinellimakes/sandcam) project.
+
+## Build Guide
+
+See **[DuneBox-docs](https://github.com/Manaiakalani/DuneBox-docs)** for the complete build guide — hardware, physical construction, calibration, troubleshooting, and customization.
