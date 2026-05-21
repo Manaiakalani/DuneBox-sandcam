@@ -23,6 +23,8 @@
   "shark_count": 5,
   "show_contours": false,
   "show_creatures": true,
+  "sound_enabled": true,
+  "sound_master_volume": 0.7,
   "temporal_alpha": 0.05,
   "vision_calibration_points": [],
   "vision_debug_enabled": true,

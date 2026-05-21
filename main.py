@@ -8,6 +8,7 @@ Right-drag  lower terrain (simulator only)
 Scroll      resize brush  (simulator only)
 C           toggle contour lines
 G           toggle creatures
+S           toggle sound mute
 R           reset terrain (simulator only)
 Tab         open / close settings sidebar
 Esc / Q     quit
@@ -516,6 +517,8 @@ def main() -> int:
             sound_mgr.update(frame, dt)
             if config.show_creatures:
                 creatures.update(frame, dt)
+                for snd_event in creatures.pop_sound_events():
+                    sound_mgr.play_event(snd_event)
             renderer.draw(scene, frame,
                           show_contours=config.show_contours,
                           colour_scheme=config.colour_scheme)
@@ -570,6 +573,8 @@ def main() -> int:
                         tag = debug_font.render(kind, True, (255, 230, 90))
                         scene.blit(tag, (px + 8, py - 8))
                 vision_events = interactions.pop_events()
+                for _ve in vision_events:
+                    sound_mgr.play_event("marker_detected")
 
             guide_message = None
             active_challenge = None

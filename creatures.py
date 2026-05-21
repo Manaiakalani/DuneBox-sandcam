@@ -920,6 +920,7 @@ class CreatureManager:
     def __init__(self, n_sharks: int = 4, n_dinos: int = 5) -> None:
         self._targets = {Shark: n_sharks, Dinosaur: n_dinos}
         self._creatures: list[Creature] = []
+        self._events: list[str] = []
 
     @classmethod
     def prewarm_assets(cls, progress=None) -> bool:
@@ -939,10 +940,22 @@ class CreatureManager:
 
     def update(self, frame: np.ndarray, dt: float) -> None:
         h, w = frame.shape
+        before = len(self._creatures)
         self._creatures = [creature for creature in self._creatures if creature.alive_on(frame)]
-        self._spawn_missing(frame, w, h)
+        despawned = before - len(self._creatures)
+        for _ in range(despawned):
+            self._events.append("creature_despawn")
+        spawned = self._spawn_missing(frame, w, h)
+        for _ in range(spawned):
+            self._events.append("creature_spawn")
         for creature in self._creatures:
             creature.update(frame, dt)
+
+    def pop_sound_events(self) -> list[str]:
+        """Return and clear queued sound event names."""
+        events = self._events
+        self._events = []
+        return events
 
     def draw(self, surface: pygame.Surface, frame: np.ndarray) -> None:
         for creature in self._creatures:
@@ -957,11 +970,12 @@ class CreatureManager:
                 counts["dinosaurs"] += 1
         return counts
 
-    def _spawn_missing(self, frame: np.ndarray, w: int, h: int) -> None:
+    def _spawn_missing(self, frame: np.ndarray, w: int, h: int) -> int:
         counts = {cls: 0 for cls in self._targets}
         for creature in self._creatures:
             counts[type(creature)] = counts.get(type(creature), 0) + 1
 
+        spawned = 0
         for cls, target in self._targets.items():
             while counts[cls] < target:
                 creature = self._try_spawn(cls, frame, w, h)
@@ -969,6 +983,8 @@ class CreatureManager:
                     break
                 self._creatures.append(creature)
                 counts[cls] += 1
+                spawned += 1
+        return spawned
 
     @staticmethod
     def _try_spawn(cls: type[Creature], frame: np.ndarray, w: int, h: int) -> Creature | None:

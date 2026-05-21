@@ -94,7 +94,10 @@ class Config:
     available_cameras: list[dict[str, str | int]] | None = None
     vision_debug_enabled: bool = False
     vision_calibration_points: list[list[float]] | None = None
+    sound_enabled: bool = True
+    sound_master_volume: float = 0.7
     vision_calibrating: bool = False
+    sound_changed: bool = False
     display_changed: bool = False
     depth_range_changed: bool = False
     filter_changed: bool = False
@@ -133,6 +136,7 @@ class Config:
             "filter_changed",
             "ai_changed",
             "vision_changed",
+            "sound_changed",
             "available_cameras",
             "camera_scan_requested",
             "camera_scan_status",
@@ -177,6 +181,7 @@ class Config:
             config.available_cameras = []
         if not config.vision_calibration_points or len(config.vision_calibration_points) != 4:
             config.vision_calibration_points = []
+        config.sound_master_volume = max(0.0, min(1.0, float(config.sound_master_volume)))
         return config
 
     def save(self) -> None:
@@ -211,6 +216,8 @@ class Config:
             "camera_index": self.camera_index,
             "vision_debug_enabled": self.vision_debug_enabled,
             "vision_calibration_points": self.vision_calibration_points or [],
+            "sound_enabled": self.sound_enabled,
+            "sound_master_volume": self.sound_master_volume,
         }
         CONFIG_PATH.write_text(
             json.dumps(payload, indent=2, sort_keys=True),
