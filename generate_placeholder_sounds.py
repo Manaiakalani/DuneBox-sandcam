@@ -315,6 +315,33 @@ def lava_sizzle() -> None:
     _save("lava_sizzle.wav", samples)
 
 
+def earthquake_rumble() -> None:
+    """Deep, long rumble with crackling (~3 s) — earthquake event."""
+    duration = 3.0
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    rng = np.random.default_rng(42)
+    # Sub-bass drone lower than volcano (25 Hz fundamental)
+    base = np.sin(2 * np.pi * 25 * t) * 0.7
+    base += np.sin(2 * np.pi * 40 * t) * 0.35
+    base += np.sin(2 * np.pi * 60 * t) * 0.15
+    # Heavy filtered noise for ground rumble texture
+    noise = rng.normal(0, 1, n)
+    kernel = np.ones(400) / 400
+    rumble_noise = np.convolve(noise, kernel, mode="same") * 0.5
+    # Crackling: sparse impulse pops
+    crackle = rng.normal(0, 1, n)
+    crackle_env = (rng.random(n) > 0.997).astype(np.float64) * 2.0
+    crackle = crackle * crackle_env
+    # Amplitude envelope: swell up then decay
+    env = np.sin(np.pi * t / duration) ** 0.6
+    # Slow modulation for rumble feel
+    mod = 0.7 + 0.3 * np.sin(2 * np.pi * 1.2 * t)
+    samples = (base + rumble_noise + crackle * 0.3) * env * mod
+    _fade(samples, int(0.15 * SAMPLE_RATE), int(0.4 * SAMPLE_RATE))
+    _save("earthquake_rumble.wav", samples)
+
+
 def main() -> None:
     SOUND_DIR.mkdir(parents=True, exist_ok=True)
     print("Generating placeholder sounds...")
@@ -335,6 +362,7 @@ def main() -> None:
     volcano_rumble()
     volcano_eruption()
     lava_sizzle()
+    earthquake_rumble()
     print("Done.")
 
 

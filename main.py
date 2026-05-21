@@ -10,6 +10,7 @@ C           toggle contour lines
 G           toggle creatures
 V           cycle creature set (modern / prehistoric / all / none)
 O           toggle volcano placement mode (click to place & erupt)
+K           trigger earthquake at centre (testing)
 S           toggle sound mute
 D           toggle DEM terrain overlay
 N           toggle day/night cycle
@@ -25,6 +26,8 @@ Tab         open / close settings sidebar
 Esc / Q     quit
 """
 
+import math
+import random
 import sys
 import time
 
@@ -63,7 +66,7 @@ from webcam_observer import (
 )
 from bridge import AppBridge
 from depth_server import DepthStreamServer
-from volcano import VolcanoManager
+from volcano import VolcanoManager, EruptionState
 from earthquake import EarthquakeDetector
 
 FPS           = 60
@@ -766,6 +769,25 @@ def main() -> int:
             for v_snd in volcano_mgr.pop_sound_events():
                 sound_mgr.play_event(v_snd)
 
+            # ── earthquake system ─────────────────────────────────────────────
+            quake_triggered = earthquake_det.update(frame, prev_frame, dt)
+            if quake_triggered:
+                epi = earthquake_det.get_epicenter()
+                if epi is not None:
+                    # Stampede
+                    if config.show_creatures:
+                        creatures.trigger_stampede(epi[0], epi[1])
+                    # Volcanic chain reaction: 70% chance for nearby volcanoes
+                    for vi, v in enumerate(volcano_mgr._volcanoes):
+                        dist = math.hypot(v.x - epi[0], v.y - epi[1])
+                        if dist < 150 and random.random() < 0.7:
+                            if v.state in (EruptionState.DORMANT, EruptionState.COOLING):
+                                volcano_mgr.trigger_eruption(vi)
+            for eq_snd in earthquake_det.pop_sound_events():
+                sound_mgr.play_event(eq_snd)
+            earthquake_det.draw(scene)
+            prev_frame = frame.copy()
+
             # ── game modes ────────────────────────────────────────────────────
             game_mgr.update(frame, dt)
             game_mgr.draw(scene)
@@ -865,7 +887,6 @@ def main() -> int:
                 # Notify C++ app of volcano eruptions
                 if volcano_mgr.is_erupting():
                     for v in volcano_mgr._volcanoes:
-                        from volcano import EruptionState
                         if v.state == EruptionState.ERUPTING and abs(v.timer - 5.0) < dt * 2:
                             app_bridge.send({
                                 "type": "volcano_eruption",
@@ -998,8 +1019,11 @@ def main() -> int:
             else:
                 vision_events.clear()
 
-            # Screen shake offset from volcano eruptions
-            shake_dx, shake_dy = volcano_mgr.get_shake_offset()
+            # Screen shake offset from volcano eruptions + earthquake
+            v_shake_dx, v_shake_dy = volcano_mgr.get_shake_offset()
+            eq_shake_dx, eq_shake_dy = earthquake_det.get_shake_offset()
+            shake_dx = v_shake_dx + eq_shake_dx
+            shake_dy = v_shake_dy + eq_shake_dy
 
             if scene.get_size() == screen.get_size():
                 screen.blit(scene, (shake_dx, shake_dy))

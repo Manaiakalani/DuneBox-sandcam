@@ -40,6 +40,7 @@ _EVENT_FILES = {
     "volcano_rumble": "volcano_rumble.wav",
     "volcano_eruption": "volcano_eruption.wav",
     "lava_sizzle": "lava_sizzle.wav",
+    "earthquake_rumble": "earthquake_rumble.wav",
 }
 
 # Volume categories
