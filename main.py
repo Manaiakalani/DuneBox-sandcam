@@ -13,6 +13,7 @@ O           toggle volcano placement mode (click to place & erupt)
 S           toggle sound mute
 D           toggle DEM terrain overlay
 N           toggle day/night cycle
+E           toggle ecosystem simulation
 +/-         speed up / slow down day/night cycle
 P           pause / resume day/night cycle
 [ / ]       cycle built-in terrains
@@ -41,6 +42,7 @@ from ai_guide import (
 )
 from creatures import CreatureManager, MARKER_DINO_SPAWN, MARKER_EXTINCTION
 from day_night import DayNightCycle
+from ecosystem import EcosystemManager
 # from depth_source import MouseSimulator
 from sensor_api import create_sensor
 from dem_loader import (
@@ -62,6 +64,7 @@ from webcam_observer import (
 from bridge import AppBridge
 from depth_server import DepthStreamServer
 from volcano import VolcanoManager
+from earthquake import EarthquakeDetector
 
 FPS           = 60
 BRUSH_MIN     = 8
@@ -380,6 +383,10 @@ def main() -> int:
         depth_server.start()
     volcano_mgr = VolcanoManager(render_w, render_h)
     volcano_place_mode = False  # 'O' key toggles placement mode
+    earthquake_det = EarthquakeDetector(render_w, render_h)
+    prev_frame: np.ndarray | None = None  # previous depth frame for earthquake detection
+    eco_mgr = EcosystemManager(render_w, render_h)
+    eco_enabled = False
     app_start_time = time.monotonic()
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
@@ -511,6 +518,11 @@ def main() -> int:
                         day_night_enabled = not day_night_enabled
                         if not day_night_enabled:
                             prev_day_night_phase = ""
+                    elif event.key == pygame.K_e:
+                        eco_enabled = not eco_enabled
+                        eco_mgr.set_enabled(eco_enabled)
+                        dem_flash_text = f"Ecosystem {'ON' if eco_enabled else 'OFF'}"
+                        dem_flash_timer = 2.0
                     elif event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                         day_night.set_speed(day_night._speed + 0.5)
                     elif event.key == pygame.K_MINUS:
@@ -531,6 +543,10 @@ def main() -> int:
                             "Volcano placement ON (click to place)"
                             if volcano_place_mode else "Volcano placement OFF"
                         )
+                        dem_flash_timer = 2.0
+                    elif event.key == pygame.K_k:
+                        earthquake_det.force_trigger(render_w // 2, render_h // 2)
+                        dem_flash_text = "Earthquake triggered!"
                         dem_flash_timer = 2.0
                 elif event.type == pygame.MOUSEBUTTONDOWN and volcano_place_mode:
                     if event.button == 1:
@@ -556,6 +572,8 @@ def main() -> int:
                 scene = pygame.Surface((render_w, render_h))
                 renderer = Renderer(render_w, render_h)
                 source.resize(render_w, render_h)
+                eco_mgr = EcosystemManager(render_w, render_h)
+                eco_mgr.set_enabled(eco_enabled)
 
             if config.depth_range_changed:
                 config.depth_range_changed = False
@@ -711,6 +729,21 @@ def main() -> int:
                 creatures.update(frame, dt)
                 for snd_event in creatures.pop_sound_events():
                     sound_mgr.play_event(snd_event)
+
+            # ── ecosystem simulation ──────────────────────────────────────
+            if eco_enabled:
+                eco_mgr.set_day_phase(
+                    day_night.get_phase() in ("day", "dawn") if day_night_enabled else True
+                )
+                eco_mgr.update(frame, dt)
+                # Feed vegetation map to creature system for food-seeking
+                if config.show_creatures:
+                    creatures.set_vegetation_map(eco_mgr.get_vegetation_map())
+                    for hx, hy in creatures.get_herbivore_positions():
+                        eco_mgr.graze_at(hx, hy)
+            else:
+                creatures.set_vegetation_map(None)
+
             renderer.draw(scene, frame,
                           show_contours=config.show_contours,
                           colour_scheme=config.colour_scheme,
@@ -719,6 +752,10 @@ def main() -> int:
             # Sky effects (stars, moon, sun) — after terrain, before creatures
             if day_night_enabled:
                 day_night.draw_sky_effects(scene, frame)
+
+            # Vegetation overlay — between terrain and creatures
+            if eco_enabled:
+                eco_mgr.draw(scene)
 
             if config.show_creatures:
                 creatures.draw(scene, frame)
@@ -1015,8 +1052,9 @@ def main() -> int:
             )
             game_hud = "  F1-F4 games" if not game_mgr.is_active() else "  Esc end game"
             volcano_state = "erupting" if volcano_mgr.is_erupting() else f"{len(volcano_mgr._volcanoes)}v"
+            eco_state = "eco:on" if eco_enabled else "eco:off"
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  V set:{creature_set_label}  "
-                   f"O volcano:{volcano_state}  "
+                   f"E {eco_state}  O volcano:{volcano_state}  "
                    f"S sound:{sound_state}  N {dn_state}  B {bridge_state}  U {depth_state}  D {dem_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}{game_hud}")
             label = hud_font.render(hud, True, (200, 200, 200))
@@ -1028,6 +1066,19 @@ def main() -> int:
                     screen, hud_font,
                     screen.get_width() - 140, 10,
                 )
+
+            # Ecosystem stats and biome tooltip
+            if eco_enabled:
+                eco_mgr.draw_stats(
+                    screen, debug_font,
+                    10, screen.get_height() - 44,
+                    herbivore_count=creatures.get_herbivore_count() if config.show_creatures else 0,
+                    carnivore_count=creatures.get_carnivore_count() if config.show_creatures else 0,
+                )
+                eco_scene_mx, eco_scene_my = _screen_to_scene(
+                    mx, my, screen.get_width(), screen.get_height(), render_w, render_h,
+                )
+                eco_mgr.draw_biome_tooltip(screen, debug_font, eco_scene_mx, eco_scene_my)
 
             sidebar.update(dt)
             sidebar.draw(screen, config)

@@ -32,6 +32,7 @@ _PAUSE_DURATION_RANGE = (0.7, 1.4)
 _PREDATOR_CHASE_RANGE = 100.0
 _PREY_FLEE_RANGE = 80.0
 _KILL_RANGE = 12.0
+_VEGETATION_MAP: np.ndarray | None = None  # set by CreatureManager for food-seeking
 _ASSET_DIR = pathlib.Path(__file__).with_name("assets") / "creatures"
 _SHADOW_CACHE: dict[tuple[int, int, int, tuple[int, int, int]], pygame.Surface] = {}
 _FILL_CACHE: dict[tuple[int, int, int, int, int], pygame.Surface] = {}
@@ -725,6 +726,24 @@ class Dinosaur(Creature):
         self._phase += dt * self.speed * 0.07
         super().update(frame, dt)
 
+    def _pick_target(self, frame: np.ndarray, w: int, h: int) -> np.ndarray | None:
+        veg = _VEGETATION_MAP
+        if veg is not None and veg.shape == (h, w):
+            best, best_score = None, -1.0
+            for _ in range(25):
+                angle = random.uniform(0, math.tau)
+                dist = random.uniform(40, 150)
+                tx = float(np.clip(self.pos[0] + math.cos(angle) * dist, 0, w - 1))
+                ty = float(np.clip(self.pos[1] + math.sin(angle) * dist, 0, h - 1))
+                if self._valid_xy(frame, tx, ty):
+                    score = float(veg[int(ty), int(tx)]) + random.uniform(0, 0.15)
+                    if score > best_score:
+                        best_score = score
+                        best = np.array([tx, ty], dtype=np.float64)
+            if best is not None:
+                return best
+        return super()._pick_target(frame, w, h)
+
     def _frame_index(self) -> int:
         cycle = (self._phase % math.tau) / math.tau
         count = len(self._directional_frames[0])
@@ -941,6 +960,27 @@ class _PrehistoricBase(Creature):
         self._phase += dt * self.speed * 0.07
         super().update(frame, dt)
 
+    def _pick_target(self, frame: np.ndarray, w: int, h: int) -> np.ndarray | None:
+        # Herbivores seek vegetation; predators seek herbivore clusters
+        if self._IS_FLYING or self._IS_PREDATOR:
+            return super()._pick_target(frame, w, h)
+        veg = _VEGETATION_MAP
+        if veg is not None and veg.shape == (h, w):
+            best, best_score = None, -1.0
+            for _ in range(25):
+                angle = random.uniform(0, math.tau)
+                dist = random.uniform(40, 150)
+                tx = float(np.clip(self.pos[0] + math.cos(angle) * dist, 0, w - 1))
+                ty = float(np.clip(self.pos[1] + math.sin(angle) * dist, 0, h - 1))
+                if self._valid_xy(frame, tx, ty):
+                    score = float(veg[int(ty), int(tx)]) + random.uniform(0, 0.15)
+                    if score > best_score:
+                        best_score = score
+                        best = np.array([tx, ty], dtype=np.float64)
+            if best is not None:
+                return best
+        return super()._pick_target(frame, w, h)
+
     def _frame_index(self) -> int:
         cycle = (self._phase % math.tau) / math.tau
         count = len(self._directional_frames[0])
@@ -1131,6 +1171,9 @@ class CreatureManager:
         self._extinction_timer = 0.0
         self._extinction_active = False
         self._marker_spawned: dict[int, float] = {}
+        self._vegetation_map: np.ndarray | None = None
+        self._stampede_timer: float = 0.0
+        self._stampede_epicenter: tuple[float, float] = (0.0, 0.0)
         self._apply_creature_set()
 
     @property
@@ -1187,6 +1230,35 @@ class CreatureManager:
         """When active, creatures move at 50% speed."""
         self._night_mode = active
 
+    def set_vegetation_map(self, veg_map: np.ndarray | None) -> None:
+        """Provide a vegetation density map so herbivores seek food."""
+        global _VEGETATION_MAP
+        self._vegetation_map = veg_map
+        _VEGETATION_MAP = veg_map
+
+    def get_herbivore_positions(self) -> list[tuple[int, int]]:
+        """Return pixel positions of all land herbivores."""
+        positions: list[tuple[int, int]] = []
+        for c in self._creatures:
+            if isinstance(c, _PrehistoricBase) and not c._IS_PREDATOR and not c._IS_FLYING:
+                positions.append((int(c.pos[0]), int(c.pos[1])))
+            elif isinstance(c, Dinosaur):
+                positions.append((int(c.pos[0]), int(c.pos[1])))
+        return positions
+
+    def get_herbivore_count(self) -> int:
+        return sum(
+            1 for c in self._creatures
+            if (isinstance(c, _PrehistoricBase) and not c._IS_PREDATOR and not c._IS_FLYING)
+            or isinstance(c, Dinosaur)
+        )
+
+    def get_carnivore_count(self) -> int:
+        return sum(
+            1 for c in self._creatures
+            if isinstance(c, _PrehistoricBase) and c._IS_PREDATOR
+        )
+
     def spawn_at(self, cls: type[Creature], x: float, y: float, frame: np.ndarray) -> bool:
         """Try to spawn a creature of the given class at a specific position."""
         creature = cls(x, y)
@@ -1231,6 +1303,28 @@ class CreatureManager:
         self._marker_spawned[marker_id] = now
         return events
 
+    def trigger_stampede(
+        self,
+        epicenter_x: float,
+        epicenter_y: float,
+        duration: float = 3.0,
+    ) -> None:
+        """All creatures flee radially from the epicentre at 2× speed."""
+        self._stampede_timer = duration
+        self._stampede_epicenter = (epicenter_x, epicenter_y)
+        for c in self._creatures:
+            c._pre_stampede_speed = c.speed
+            c.speed *= 2.0
+            dx = c.pos[0] - epicenter_x
+            dy = c.pos[1] - epicenter_y
+            norm = math.hypot(dx, dy)
+            if norm > 0:
+                flee_dist = 200.0
+                c._target = np.array([
+                    c.pos[0] + (dx / norm) * flee_dist,
+                    c.pos[1] + (dy / norm) * flee_dist,
+                ], dtype=np.float64)
+
     def _trigger_extinction(self) -> None:
         """Start extinction event — dinos flee to edges then despawn."""
         self._extinction_active = True
@@ -1249,6 +1343,15 @@ class CreatureManager:
                 self._extinction_active = False
                 for cls in _PREHISTORIC_CLASSES:
                     self._targets.pop(cls, None)
+
+        # Stampede wind-down
+        if self._stampede_timer > 0:
+            self._stampede_timer -= dt
+            if self._stampede_timer <= 0:
+                for c in self._creatures:
+                    if hasattr(c, "_pre_stampede_speed"):
+                        c.speed = c._pre_stampede_speed
+                        del c._pre_stampede_speed
 
         before = len(self._creatures)
         self._creatures = [creature for creature in self._creatures if creature.alive_on(frame)]
