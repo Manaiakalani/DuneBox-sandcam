@@ -22,6 +22,8 @@ _AMBIENT_FADE_SPEED = 1.0  # full volume change per second (1–2 s crossfade)
 _AMBIENT_FILES = {
     "water": "water_ambient.wav",
     "wind": "wind_ambient.wav",
+    "crickets": "crickets_ambient.wav",
+    "owl": "owl_ambient.wav",
 }
 
 _EVENT_FILES = {
@@ -29,6 +31,7 @@ _EVENT_FILES = {
     "creature_despawn": "creature_despawn.wav",
     "marker_detected": "marker_detected.wav",
     "marker_lost": "marker_lost.wav",
+    "dawn_birds": "dawn_birds.wav",
 }
 
 # Volume categories
@@ -47,6 +50,7 @@ class SoundManager:
             _CATEGORY_AMBIENT: 0.6,
             _CATEGORY_EVENTS: 0.8,
         }
+        self._day_night_phase: str = "day"
 
         # Current ambient target/actual volumes for smooth fading
         self._ambient_target: dict[str, float] = {}
@@ -104,12 +108,19 @@ class SoundManager:
                 pass
 
     def update(self, height_data: np.ndarray, dt: float) -> None:
-        """Call every frame. Adjusts ambient volumes based on terrain."""
+        """Call every frame. Adjusts ambient volumes based on terrain and day/night."""
         if not self._enabled:
             return
 
-        # Wind always plays at a base level
-        self._ambient_target["wind"] = 0.5
+        phase = self._day_night_phase
+
+        # Wind: reduced at night, slight pickup at dusk
+        if phase == "night":
+            self._ambient_target["wind"] = 0.25
+        elif phase == "dusk":
+            self._ambient_target["wind"] = 0.65
+        else:
+            self._ambient_target["wind"] = 0.5
 
         # Water volume scales with fraction of terrain below water level
         if height_data is not None and height_data.size > 0:
@@ -117,6 +128,11 @@ class SoundManager:
             self._ambient_target["water"] = min(1.0, water_fraction * 2.0)
         else:
             self._ambient_target["water"] = 0.0
+
+        # Night creatures: crickets and owl
+        is_night = phase == "night"
+        self._ambient_target["crickets"] = 0.6 if is_night else 0.0
+        self._ambient_target["owl"] = 0.35 if is_night else 0.0
 
         # Smoothly fade ambient channels toward their targets
         for name, channel in self._ambient_channels.items():
@@ -155,6 +171,10 @@ class SoundManager:
 
     def set_master_volume(self, vol: float) -> None:
         self._master_volume = max(0.0, min(1.0, vol))
+
+    def set_day_night_phase(self, phase: str) -> None:
+        """Set the current phase ('dawn', 'day', 'dusk', 'night')."""
+        self._day_night_phase = phase
 
     def toggle_mute(self) -> bool:
         """Toggle mute state. Returns the new muted state."""

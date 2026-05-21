@@ -14,6 +14,7 @@ import json
 import math
 import pathlib
 import random
+import time
 from typing import ClassVar
 
 import numpy as np
@@ -28,6 +29,9 @@ _DIRECTION_COUNT = 16
 _SHORE_SAMPLE_RADIUS = 14
 _MOVE_DURATION_RANGE = (4.0, 7.0)
 _PAUSE_DURATION_RANGE = (0.7, 1.4)
+_PREDATOR_CHASE_RANGE = 100.0
+_PREY_FLEE_RANGE = 80.0
+_KILL_RANGE = 12.0
 _ASSET_DIR = pathlib.Path(__file__).with_name("assets") / "creatures"
 _SHADOW_CACHE: dict[tuple[int, int, int, tuple[int, int, int]], pygame.Surface] = {}
 _FILL_CACHE: dict[tuple[int, int, int, int, int], pygame.Surface] = {}
@@ -909,18 +913,258 @@ class Dinosaur(Creature):
             )
 
 
+# ── Prehistoric dinosaur species ──────────────────────────────────────────────
+
+
+class _PrehistoricBase(Creature):
+    """Shared logic for all prehistoric dinosaur species."""
+
+    _SPECIES_SPEED: ClassVar[float] = 30.0
+    _SPECIES_ASSET: ClassVar[str] = "trex"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.5, 0.85)
+    _IS_PREDATOR: ClassVar[bool] = False
+    _IS_FLYING: ClassVar[bool] = False
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (90, 120, 60)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (55, 80, 35)
+
+    def __init__(self, x: float, y: float) -> None:
+        self._phase = random.uniform(0, math.tau)
+        self._flee_target: np.ndarray | None = None
+        self._chase_target: Creature | None = None
+        super().__init__(x, y, speed=self._SPECIES_SPEED + random.uniform(-4, 4))
+
+    def is_valid(self, elevation: float) -> bool:
+        lo, hi = self._ELEVATION_RANGE
+        return lo <= elevation <= hi
+
+    def update(self, frame: np.ndarray, dt: float) -> None:
+        self._phase += dt * self.speed * 0.07
+        super().update(frame, dt)
+
+    def _frame_index(self) -> int:
+        cycle = (self._phase % math.tau) / math.tau
+        count = len(self._directional_frames[0])
+        return int(cycle * count) % count
+
+    def _asset_name(self) -> str:
+        return self._SPECIES_ASSET
+
+    def _fallback_frames(self) -> list[pygame.Surface]:
+        sprites: list[pygame.Surface] = []
+        for swing in (-1.0, -0.35, 0.35, 1.0):
+            surf = self._surface((18, 14))
+            ls = int(round(swing * 2))
+            body = [(3, 4), (7, 2), (11, 2), (14, 4), (15, 7), (14, 10), (11, 11), (7, 11), (3, 9)]
+            head = [(13, 3), (17, 3), (17, 7), (13, 7)]
+            pygame.draw.polygon(surf, self._BODY_COLOR, body)
+            pygame.draw.polygon(surf, self._DARK_COLOR, body, 1)
+            pygame.draw.polygon(surf, self._BODY_COLOR, head)
+            pygame.draw.polygon(surf, self._DARK_COLOR, head, 1)
+            pygame.draw.line(surf, self._DARK_COLOR, (5, 10), (4, 12 + ls), 1)
+            pygame.draw.line(surf, self._DARK_COLOR, (9, 10), (8, 12 - ls), 1)
+            sprites.append(self._scale_pixel_art(surf, 3))
+        return sprites
+
+    def _draw_environment(
+        self,
+        surface: pygame.Surface,
+        frame: np.ndarray,
+        sprite: pygame.Surface,
+    ) -> None:
+        context = self._terrain_context(frame)
+        self._shadow(surface, self.pos, 18, 7, alpha=55, colour=(0, 0, 0))
+        if math.hypot(float(self.vel[0]), float(self.vel[1])) > 12:
+            dust = self._shadow(
+                surface=None,
+                pos=np.array([0.0, 0.0]),
+                rx=14, ry=6,
+                alpha=30, colour=(180, 165, 120),
+            )
+            if isinstance(dust, pygame.Surface):
+                surface.blit(dust, (int(self.pos[0]) - 14, int(self.pos[1]) + 4))
+        if context["shore_mix"] > 0.18:
+            coast = self._masked_overlay(sprite, (235, 205, 130), int(28 * context["shore_mix"]))
+            surface.blit(
+                coast,
+                coast.get_rect(center=(int(self.pos[0]), int(self.pos[1]))),
+                special_flags=pygame.BLEND_RGBA_ADD,
+            )
+
+
+class TRex(_PrehistoricBase):
+    _SPECIES_SPEED: ClassVar[float] = 30.0
+    _SPECIES_ASSET: ClassVar[str] = "trex"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.6, 0.85)
+    _IS_PREDATOR: ClassVar[bool] = True
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (75, 100, 50)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (50, 70, 30)
+
+
+class Raptor(_PrehistoricBase):
+    _SPECIES_SPEED: ClassVar[float] = 55.0
+    _SPECIES_ASSET: ClassVar[str] = "raptor"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.5, 0.7)
+    _IS_PREDATOR: ClassVar[bool] = True
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (110, 130, 70)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (70, 85, 40)
+
+
+class Stegosaurus(_PrehistoricBase):
+    _SPECIES_SPEED: ClassVar[float] = 20.0
+    _SPECIES_ASSET: ClassVar[str] = "stegosaurus"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.5, 0.65)
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (90, 120, 60)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (55, 80, 35)
+
+
+class Triceratops(_PrehistoricBase):
+    _SPECIES_SPEED: ClassVar[float] = 25.0
+    _SPECIES_ASSET: ClassVar[str] = "triceratops"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.55, 0.75)
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (140, 120, 70)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (100, 85, 45)
+
+    def update(self, frame: np.ndarray, dt: float) -> None:
+        if self._chase_target is not None:
+            dx = float(self._chase_target.pos[0] - self.pos[0])
+            dy = float(self._chase_target.pos[1] - self.pos[1])
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                self.angle = math.atan2(dy, dx)
+                self.speed = self._SPECIES_SPEED * 1.8
+        else:
+            self.speed = self._SPECIES_SPEED + random.uniform(-4, 4)
+        super().update(frame, dt)
+
+
+class Pteranodon(_PrehistoricBase):
+    _SPECIES_SPEED: ClassVar[float] = 45.0
+    _SPECIES_ASSET: ClassVar[str] = "pteranodon"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.75, 1.0)
+    _IS_FLYING: ClassVar[bool] = True
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (100, 130, 155)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (65, 90, 115)
+
+    def __init__(self, x: float, y: float) -> None:
+        super().__init__(x, y)
+        self._soar_center = np.array([x, y], dtype=np.float64)
+        self._soar_radius = random.uniform(60, 140)
+        self._soar_angle = random.uniform(0, math.tau)
+        self._soar_speed = random.uniform(0.4, 0.8)
+
+    def is_valid(self, elevation: float) -> bool:
+        return elevation >= WATER_LEVEL
+
+    def update(self, frame: np.ndarray, dt: float) -> None:
+        self._phase += dt * self.speed * 0.07
+        self._soar_angle += self._soar_speed * dt
+        tx = self._soar_center[0] + math.cos(self._soar_angle) * self._soar_radius
+        ty = self._soar_center[1] + math.sin(self._soar_angle) * self._soar_radius
+        h, w = frame.shape
+        tx = float(np.clip(tx, 10, w - 10))
+        ty = float(np.clip(ty, 10, h - 10))
+        dx = tx - self.pos[0]
+        dy = ty - self.pos[1]
+        dist = math.hypot(dx, dy)
+        if dist > 0:
+            self.angle = math.atan2(dy, dx)
+            move = min(self.speed * dt, dist)
+            self.pos[0] += (dx / dist) * move
+            self.pos[1] += (dy / dist) * move
+            self.vel[0] = (dx / dist) * self.speed
+            self.vel[1] = (dy / dist) * self.speed
+
+    def _draw_environment(
+        self,
+        surface: pygame.Surface,
+        frame: np.ndarray,
+        sprite: pygame.Surface,
+    ) -> None:
+        self._shadow(surface, self.pos, 20, 6, alpha=30, colour=(0, 0, 0))
+
+
+class Brachiosaurus(_PrehistoricBase):
+    _SPECIES_SPEED: ClassVar[float] = 15.0
+    _SPECIES_ASSET: ClassVar[str] = "brachiosaurus"
+    _ELEVATION_RANGE: ClassVar[tuple[float, float]] = (0.46, 0.6)
+    _BODY_COLOR: ClassVar[tuple[int, int, int]] = (95, 130, 80)
+    _DARK_COLOR: ClassVar[tuple[int, int, int]] = (60, 90, 50)
+
+
+# Creature set names for mode cycling
+CREATURE_SET_MODERN = "modern"
+CREATURE_SET_PREHISTORIC = "prehistoric"
+CREATURE_SET_ALL = "all"
+CREATURE_SET_NONE = "none"
+CREATURE_SETS = [CREATURE_SET_MODERN, CREATURE_SET_PREHISTORIC, CREATURE_SET_ALL, CREATURE_SET_NONE]
+
+_PREHISTORIC_CLASSES: list[type[Creature]] = [
+    TRex, Raptor, Raptor, Stegosaurus, Triceratops, Pteranodon, Brachiosaurus,
+]
+
+# ArUco marker → species mapping for marker-triggered spawning
+MARKER_DINO_SPAWN: dict[int, tuple[type[Creature], int]] = {
+    10: (TRex, 2),
+    11: (Raptor, 3),
+    12: (Pteranodon, 3),
+}
+MARKER_EXTINCTION = 13
+
+
 class CreatureManager:
     """
     Spawns and updates all creatures.
 
     Creatures are spawned lazily on the first frame that has valid terrain for
     them, so it is safe to create the manager before depth data arrives.
+
+    Supports creature set cycling: modern, prehistoric, all, none.
     """
 
     def __init__(self, n_sharks: int = 4, n_dinos: int = 5) -> None:
-        self._targets = {Shark: n_sharks, Dinosaur: n_dinos}
+        self._base_targets = {Shark: n_sharks, Dinosaur: n_dinos}
+        self._targets: dict[type[Creature], int] = dict(self._base_targets)
         self._creatures: list[Creature] = []
         self._events: list[str] = []
+        self._night_mode = False
+        self._creature_set = CREATURE_SET_MODERN
+        self._extinction_timer = 0.0
+        self._extinction_active = False
+        self._marker_spawned: dict[int, float] = {}
+        self._apply_creature_set()
+
+    @property
+    def creature_set(self) -> str:
+        return self._creature_set
+
+    def cycle_creature_set(self) -> str:
+        """Cycle to next creature set. Returns new set name."""
+        idx = CREATURE_SETS.index(self._creature_set)
+        self._creature_set = CREATURE_SETS[(idx + 1) % len(CREATURE_SETS)]
+        self._apply_creature_set()
+        return self._creature_set
+
+    def _apply_creature_set(self) -> None:
+        sharks = self._base_targets.get(Shark, 4)
+        dinos = self._base_targets.get(Dinosaur, 5)
+        self._targets = {}
+
+        if self._creature_set == CREATURE_SET_MODERN:
+            self._targets[Shark] = sharks
+            self._targets[Dinosaur] = dinos
+        elif self._creature_set == CREATURE_SET_PREHISTORIC:
+            for cls in _PREHISTORIC_CLASSES:
+                self._targets[cls] = self._targets.get(cls, 0) + 1
+        elif self._creature_set == CREATURE_SET_ALL:
+            self._targets[Shark] = sharks
+            self._targets[Dinosaur] = dinos
+            for cls in _PREHISTORIC_CLASSES:
+                self._targets[cls] = self._targets.get(cls, 0) + 1
+        # CREATURE_SET_NONE leaves _targets empty
+
+        # Remove creatures from disabled sets
+        allowed = set(self._targets.keys())
+        self._creatures = [c for c in self._creatures if type(c) in allowed]
 
     @classmethod
     def prewarm_assets(cls, progress=None) -> bool:
@@ -934,12 +1178,78 @@ class CreatureManager:
 
     def set_targets(self, *, sharks: int | None = None, dinosaurs: int | None = None) -> None:
         if sharks is not None:
-            self._targets[Shark] = max(0, int(sharks))
+            self._base_targets[Shark] = max(0, int(sharks))
         if dinosaurs is not None:
-            self._targets[Dinosaur] = max(0, int(dinosaurs))
+            self._base_targets[Dinosaur] = max(0, int(dinosaurs))
+        self._apply_creature_set()
+
+    def set_night_mode(self, active: bool) -> None:
+        """When active, creatures move at 50% speed."""
+        self._night_mode = active
+
+    def spawn_at(self, cls: type[Creature], x: float, y: float, frame: np.ndarray) -> bool:
+        """Try to spawn a creature of the given class at a specific position."""
+        creature = cls(x, y)
+        if creature._valid_pos(frame, np.array([x, y])):
+            self._creatures.append(creature)
+            self._targets[cls] = self._targets.get(cls, 0) + 1
+            return True
+        return False
+
+    def handle_marker(self, marker_id: int, sandbox_pos: tuple[float, float], frame: np.ndarray) -> list[str]:
+        """Handle ArUco marker detection for dino spawning. Returns sound events."""
+        now = time.monotonic()
+        events: list[str] = []
+
+        if marker_id in self._marker_spawned and now - self._marker_spawned[marker_id] < 5.0:
+            return events
+
+        if marker_id == MARKER_EXTINCTION:
+            self._trigger_extinction()
+            events.append("dino_extinction")
+            self._marker_spawned[marker_id] = now
+            return events
+
+        spawn_info = MARKER_DINO_SPAWN.get(marker_id)
+        if spawn_info is None:
+            return events
+
+        cls, count = spawn_info
+        sx, sy = sandbox_pos
+        for i in range(count):
+            offset_x = sx + random.uniform(-40, 40)
+            offset_y = sy + random.uniform(-40, 40)
+            self.spawn_at(cls, offset_x, offset_y, frame)
+
+        if cls is TRex:
+            events.append("dino_roar")
+        elif cls is Raptor:
+            events.append("dino_screech")
+        elif cls is Pteranodon:
+            events.append("dino_wingflap")
+
+        self._marker_spawned[marker_id] = now
+        return events
+
+    def _trigger_extinction(self) -> None:
+        """Start extinction event — dinos flee to edges then despawn."""
+        self._extinction_active = True
+        self._extinction_timer = 3.0
+        for c in self._creatures:
+            if isinstance(c, _PrehistoricBase):
+                c.speed *= 3.0
 
     def update(self, frame: np.ndarray, dt: float) -> None:
         h, w = frame.shape
+
+        if self._extinction_active:
+            self._extinction_timer -= dt
+            if self._extinction_timer <= 0:
+                self._creatures = [c for c in self._creatures if not isinstance(c, _PrehistoricBase)]
+                self._extinction_active = False
+                for cls in _PREHISTORIC_CLASSES:
+                    self._targets.pop(cls, None)
+
         before = len(self._creatures)
         self._creatures = [creature for creature in self._creatures if creature.alive_on(frame)]
         despawned = before - len(self._creatures)
@@ -948,8 +1258,69 @@ class CreatureManager:
         spawned = self._spawn_missing(frame, w, h)
         for _ in range(spawned):
             self._events.append("creature_spawn")
+
+        self._update_predator_prey(dt)
+
+        effective_dt = dt * 0.5 if self._night_mode else dt
         for creature in self._creatures:
-            creature.update(frame, dt)
+            creature.update(frame, effective_dt)
+
+    def _update_predator_prey(self, dt: float) -> None:
+        """Predator-prey interactions: predators chase, herbivores flee, kills on contact."""
+        predators = [c for c in self._creatures if isinstance(c, _PrehistoricBase) and c._IS_PREDATOR]
+        prey = [c for c in self._creatures if isinstance(c, _PrehistoricBase) and not c._IS_PREDATOR and not c._IS_FLYING]
+
+        for c in prey:
+            c._flee_target = None
+        for c in predators:
+            c._chase_target = None
+
+        kills: list[Creature] = []
+        for pred in predators:
+            nearest_prey = None
+            nearest_dist = _PREDATOR_CHASE_RANGE
+            for p in prey:
+                if p in kills:
+                    continue
+                dist = math.hypot(pred.pos[0] - p.pos[0], pred.pos[1] - p.pos[1])
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_prey = p
+
+            if nearest_prey is None:
+                continue
+
+            pred._chase_target = nearest_prey
+            if nearest_dist > 0:
+                pred._target = nearest_prey.pos.copy()
+
+            if nearest_dist < _KILL_RANGE:
+                kills.append(nearest_prey)
+                self._events.append("dino_kill")
+
+        for p in prey:
+            if p in kills:
+                continue
+            for pred in predators:
+                dist = math.hypot(pred.pos[0] - p.pos[0], pred.pos[1] - p.pos[1])
+                if dist < _PREY_FLEE_RANGE and dist > 0:
+                    if isinstance(p, Triceratops):
+                        p._chase_target = pred
+                    else:
+                        flee_x = p.pos[0] - pred.pos[0]
+                        flee_y = p.pos[1] - pred.pos[1]
+                        norm = math.hypot(flee_x, flee_y)
+                        if norm > 0:
+                            p._target = np.array([
+                                p.pos[0] + (flee_x / norm) * 120,
+                                p.pos[1] + (flee_y / norm) * 120,
+                            ], dtype=np.float64)
+                            p.speed = p._SPECIES_SPEED * 1.5
+                    break
+
+        if kills:
+            kill_set = set(id(k) for k in kills)
+            self._creatures = [c for c in self._creatures if id(c) not in kill_set]
 
     def pop_sound_events(self) -> list[str]:
         """Return and clear queued sound event names."""
@@ -962,27 +1333,29 @@ class CreatureManager:
             creature.draw(surface, frame)
 
     def counts(self) -> dict[str, int]:
-        counts = {"sharks": 0, "dinosaurs": 0}
+        counts = {"sharks": 0, "dinosaurs": 0, "prehistoric": 0}
         for creature in self._creatures:
             if isinstance(creature, Shark):
                 counts["sharks"] += 1
+            elif isinstance(creature, _PrehistoricBase):
+                counts["prehistoric"] += 1
             elif isinstance(creature, Dinosaur):
                 counts["dinosaurs"] += 1
         return counts
 
     def _spawn_missing(self, frame: np.ndarray, w: int, h: int) -> int:
-        counts = {cls: 0 for cls in self._targets}
+        counts: dict[type[Creature], int] = {cls: 0 for cls in self._targets}
         for creature in self._creatures:
             counts[type(creature)] = counts.get(type(creature), 0) + 1
 
         spawned = 0
         for cls, target in self._targets.items():
-            while counts[cls] < target:
+            while counts.get(cls, 0) < target:
                 creature = self._try_spawn(cls, frame, w, h)
                 if creature is None:
                     break
                 self._creatures.append(creature)
-                counts[cls] += 1
+                counts[cls] = counts.get(cls, 0) + 1
                 spawned += 1
         return spawned
 

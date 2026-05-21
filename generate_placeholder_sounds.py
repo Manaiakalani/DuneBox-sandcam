@@ -123,6 +123,67 @@ def marker_lost() -> None:
     _save("marker_lost.wav", samples)
 
 
+def crickets_ambient() -> None:
+    """Loopable cricket chirp texture — rapid high-frequency pulses."""
+    duration = 4.0
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    rng = np.random.default_rng(99)
+    # Base chirp: amplitude-modulated high-frequency sine
+    carrier = np.sin(2 * np.pi * 4800 * t)
+    # Pulse envelope at ~12 Hz
+    pulse = np.clip(np.sin(2 * np.pi * 12 * t), 0, 1) ** 4
+    # Slow volume swell
+    swell = 0.5 + 0.5 * np.sin(2 * np.pi * 0.3 * t)
+    samples = carrier * pulse * swell * 0.4
+    # Add a second chirper offset
+    carrier2 = np.sin(2 * np.pi * 5200 * t)
+    pulse2 = np.clip(np.sin(2 * np.pi * 14 * t + 1.2), 0, 1) ** 4
+    swell2 = 0.5 + 0.5 * np.sin(2 * np.pi * 0.22 * t + 0.8)
+    samples += carrier2 * pulse2 * swell2 * 0.3
+    _fade(samples, int(0.3 * SAMPLE_RATE), int(0.3 * SAMPLE_RATE))
+    _save("crickets_ambient.wav", samples)
+
+
+def owl_ambient() -> None:
+    """Loopable low hoot pattern — two-note owl call repeating."""
+    duration = 4.0
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    # Two hoots per cycle
+    hoot_freq = 280
+    hoot_env = np.zeros(n)
+    for offset in (0.5, 1.0, 2.5, 3.0):
+        centre = int(offset * SAMPLE_RATE)
+        width = int(0.15 * SAMPLE_RATE)
+        start = max(0, centre - width)
+        end = min(n, centre + width)
+        local_t = np.linspace(0, 1, end - start)
+        hoot_env[start:end] += np.sin(np.pi * local_t) ** 2
+    samples = np.sin(2 * np.pi * hoot_freq * t) * hoot_env * 0.6
+    # Add subtle harmonic
+    samples += np.sin(2 * np.pi * hoot_freq * 2 * t) * hoot_env * 0.15
+    _fade(samples, int(0.2 * SAMPLE_RATE), int(0.2 * SAMPLE_RATE))
+    _save("owl_ambient.wav", samples)
+
+
+def dawn_birds() -> None:
+    """Short bird chirp sequence (~0.8 s) — one-shot dawn event."""
+    duration = 0.8
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    samples = np.zeros(n)
+    # Three quick chirps at rising pitches
+    for i, (start_s, freq) in enumerate([(0.0, 1800), (0.25, 2200), (0.5, 2600)]):
+        chirp_len = int(0.12 * SAMPLE_RATE)
+        start_idx = int(start_s * SAMPLE_RATE)
+        end_idx = min(n, start_idx + chirp_len)
+        chirp_t = np.linspace(0, 0.12, end_idx - start_idx, endpoint=False)
+        env = np.exp(-chirp_t * 25)
+        samples[start_idx:end_idx] += np.sin(2 * np.pi * freq * chirp_t) * env * 0.7
+    _save("dawn_birds.wav", samples)
+
+
 def main() -> None:
     SOUND_DIR.mkdir(parents=True, exist_ok=True)
     print("Generating placeholder sounds...")
@@ -132,6 +193,9 @@ def main() -> None:
     creature_despawn()
     marker_detected()
     marker_lost()
+    crickets_ambient()
+    owl_ambient()
+    dawn_birds()
     print("Done.")
 
 

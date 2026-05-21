@@ -93,6 +93,7 @@ class Renderer:
         *,
         show_contours: bool = True,
         colour_scheme: str = "terrain",
+        light_tint: tuple[float, float, float] | None = None,
     ) -> None:
         # Recreate internal surface if window was resized
         if self._surf.get_size() != target.get_size():
@@ -134,6 +135,11 @@ class Renderer:
             )
             contour &= above_water
             self._rgb[contour] = (self._rgb[contour] * 0.35).astype(np.uint8)
+
+        # Day/night light tint
+        if light_tint is not None and light_tint != (1.0, 1.0, 1.0):
+            tint = np.array(light_tint, dtype=np.float32).reshape(1, 1, 3)
+            self._rgb[...] = np.clip(self._rgb * tint, 0, 255).astype(np.uint8)
 
         # pygame surfarray is (W, H, 3) — transpose from numpy's (H, W, 3)
         pygame.surfarray.blit_array(self._surf, self._rgb.transpose(1, 0, 2))

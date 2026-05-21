@@ -10,6 +10,9 @@ C           toggle contour lines
 G           toggle creatures
 S           toggle sound mute
 D           toggle DEM terrain overlay
+N           toggle day/night cycle
++/-         speed up / slow down day/night cycle
+P           pause / resume day/night cycle
 [ / ]       cycle built-in terrains
 F5          save current terrain snapshot
 R           reset terrain (simulator only)
@@ -34,7 +37,7 @@ from ai_guide import (
     TemplateNarrator,
     build_async_narrator,
 )
-from creatures import CreatureManager
+from creatures import CreatureManager, MARKER_DINO_SPAWN, MARKER_EXTINCTION
 from day_night import DayNightCycle
 # from depth_source import MouseSimulator
 from sensor_api import create_sensor
@@ -432,6 +435,10 @@ def main() -> int:
                     elif event.key == pygame.K_g:
                         config.show_creatures = not config.show_creatures
                         config.request_save()
+                    elif event.key == pygame.K_v:
+                        new_set = creatures.cycle_creature_set()
+                        dem_flash_text = f"Creatures: {new_set}"
+                        dem_flash_timer = 1.5
                     elif event.key == pygame.K_s:
                         muted = sound_mgr.toggle_mute()
                         config.sound_enabled = not muted
@@ -750,6 +757,14 @@ def main() -> int:
                 for _ve in vision_events:
                     sound_mgr.play_event("marker_detected")
 
+                # ArUco markers for dinosaur spawning (IDs 10-13)
+                for obj in vision_objects:
+                    mid = obj.marker_id
+                    if mid in MARKER_DINO_SPAWN or mid == MARKER_EXTINCTION:
+                        dino_events = creatures.handle_marker(mid, obj.sandbox_pos, frame)
+                        for de in dino_events:
+                            sound_mgr.play_event(de)
+
             # ── bridge: send detected markers, handle incoming ────────────
             if bridge_enabled and app_bridge.is_connected():
                 for obj in vision_objects:
@@ -843,6 +858,7 @@ def main() -> int:
                 )
 
             creatures_state = "on" if config.show_creatures else "off"
+            creature_set_label = creatures.creature_set
             sound_state = "off" if not config.sound_enabled else "on"
             ai_state = "ai:on" if config.ai_enabled else "ai:off"
             dem_state = f"dem:{config.dem_current_terrain}" if config.dem_overlay_enabled else "dem:off"
@@ -859,7 +875,7 @@ def main() -> int:
                 else "ws:off"
             )
             game_hud = "  F1-F4 games" if not game_mgr.is_active() else "  Esc end game"
-            hud = (f"Tab settings  C contours  G creatures:{creatures_state}  "
+            hud = (f"Tab settings  C contours  G creatures:{creatures_state}  V set:{creature_set_label}  "
                    f"S sound:{sound_state}  N {dn_state}  B {bridge_state}  U {depth_state}  D {dem_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}{game_hud}")
             label = hud_font.render(hud, True, (200, 200, 200))
