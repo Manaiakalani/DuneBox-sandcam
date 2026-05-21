@@ -258,6 +258,63 @@ def dawn_birds() -> None:
     _save("dawn_birds.wav", samples)
 
 
+def volcano_rumble() -> None:
+    """Deep low-frequency rumble (~2 s) — loopable volcanic tremor."""
+    duration = 2.0
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    rng = np.random.default_rng(55)
+    # Sub-bass drone at ~35 Hz with harmonics
+    base = np.sin(2 * np.pi * 35 * t) * 0.6
+    base += np.sin(2 * np.pi * 55 * t) * 0.3
+    base += np.sin(2 * np.pi * 80 * t) * 0.15
+    # Filtered noise for texture
+    noise = rng.normal(0, 1, n)
+    kernel = np.ones(300) / 300
+    rumble_noise = np.convolve(noise, kernel, mode="same") * 0.4
+    # Slow amplitude modulation
+    mod = 0.6 + 0.4 * np.sin(2 * np.pi * 0.8 * t)
+    samples = (base + rumble_noise) * mod
+    _fade(samples, int(0.2 * SAMPLE_RATE), int(0.2 * SAMPLE_RATE))
+    _save("volcano_rumble.wav", samples)
+
+
+def volcano_eruption() -> None:
+    """Explosive burst (~1.2 s) — volcanic eruption boom."""
+    duration = 1.2
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    rng = np.random.default_rng(77)
+    # Initial explosive burst — broadband noise with fast decay
+    noise = rng.normal(0, 1, n)
+    explosion_env = np.exp(-t * 4.0)
+    # Sub-bass thump
+    thump = np.sin(2 * np.pi * 40 * t) * np.exp(-t * 6.0) * 0.8
+    # Crackle: higher frequency noise decaying slower
+    crackle = rng.normal(0, 1, n) * np.exp(-t * 2.0) * 0.3
+    samples = noise * explosion_env * 0.7 + thump + crackle
+    _fade(samples, int(0.01 * SAMPLE_RATE), int(0.3 * SAMPLE_RATE))
+    _save("volcano_eruption.wav", samples)
+
+
+def lava_sizzle() -> None:
+    """Short sizzle/hiss (~0.6 s) — lava meeting water."""
+    duration = 0.6
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    rng = np.random.default_rng(88)
+    # White noise filtered to upper frequencies
+    noise = rng.normal(0, 1, n)
+    # High-pass via differentiation
+    hiss = np.diff(noise, prepend=0) * 8.0
+    env = np.exp(-t * 5.0)
+    # Add some bubbling — low-frequency amplitude modulation
+    bubble = 0.5 + 0.5 * np.sin(2 * np.pi * 18 * t)
+    samples = hiss * env * bubble
+    _fade(samples, int(0.01 * SAMPLE_RATE), int(0.15 * SAMPLE_RATE))
+    _save("lava_sizzle.wav", samples)
+
+
 def main() -> None:
     SOUND_DIR.mkdir(parents=True, exist_ok=True)
     print("Generating placeholder sounds...")
@@ -275,6 +332,9 @@ def main() -> None:
     crickets_ambient()
     owl_ambient()
     dawn_birds()
+    volcano_rumble()
+    volcano_eruption()
+    lava_sizzle()
     print("Done.")
 
 

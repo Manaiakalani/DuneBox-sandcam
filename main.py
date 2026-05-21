@@ -9,6 +9,7 @@ Scroll      resize brush  (simulator only)
 C           toggle contour lines
 G           toggle creatures
 V           cycle creature set (modern / prehistoric / all / none)
+O           toggle volcano placement mode (click to place & erupt)
 S           toggle sound mute
 D           toggle DEM terrain overlay
 N           toggle day/night cycle
@@ -795,6 +796,25 @@ def main() -> int:
                         for de in dino_events:
                             sound_mgr.play_event(de)
 
+                # ArUco markers for volcano (IDs 20, 21, 13)
+                for obj in vision_objects:
+                    mid = obj.marker_id
+                    if mid == 20:
+                        # Place volcano at marker position
+                        vx = int(obj.sandbox_pos[0])
+                        vy = int(obj.sandbox_pos[1])
+                        volcano_mgr.place_volcano(vx, vy)
+                    elif mid == 21:
+                        # Trigger nearest volcano
+                        vx = int(obj.sandbox_pos[0])
+                        vy = int(obj.sandbox_pos[1])
+                        nearest = volcano_mgr.nearest_volcano(vx, vy)
+                        if nearest >= 0:
+                            volcano_mgr.trigger_eruption(nearest)
+                    elif mid == MARKER_EXTINCTION:
+                        # Extinction event — trigger ALL volcanoes
+                        volcano_mgr.trigger_all()
+
             # ── bridge: send detected markers, handle incoming ────────────
             if bridge_enabled and app_bridge.is_connected():
                 for obj in vision_objects:
@@ -805,6 +825,16 @@ def main() -> int:
                             "position": list(obj.position),
                             "timestamp": time.time(),
                         })
+                # Notify C++ app of volcano eruptions
+                if volcano_mgr.is_erupting():
+                    for v in volcano_mgr._volcanoes:
+                        from volcano import EruptionState
+                        if v.state == EruptionState.ERUPTING and abs(v.timer - 5.0) < dt * 2:
+                            app_bridge.send({
+                                "type": "volcano_eruption",
+                                "x": v.x / max(1, render_w),
+                                "y": v.y / max(1, render_h),
+                            })
                 for bmsg in app_bridge.poll():
                     btype = bmsg.get("type", "")
                     if btype == "theme_change":
@@ -838,7 +868,7 @@ def main() -> int:
                     "theme": config.colour_scheme,
                     "water_enabled": config.show_contours,
                     "water_coverage": float(np.mean(frame < 0.38)) if frame is not None else 0.0,
-                    "lava_active": False,
+                    "lava_active": volcano_mgr.is_erupting(),
                     "sound_muted": not config.sound_enabled,
                     "day_night": {
                         "enabled": day_night_enabled,
@@ -931,11 +961,14 @@ def main() -> int:
             else:
                 vision_events.clear()
 
+            # Screen shake offset from volcano eruptions
+            shake_dx, shake_dy = volcano_mgr.get_shake_offset()
+
             if scene.get_size() == screen.get_size():
-                screen.blit(scene, (0, 0))
+                screen.blit(scene, (shake_dx, shake_dy))
             else:
                 scaled = pygame.transform.scale(scene, screen.get_size())
-                screen.blit(scaled, (0, 0))
+                screen.blit(scaled, (shake_dx, shake_dy))
 
             draw_guide_overlay(
                 screen,
@@ -981,7 +1014,9 @@ def main() -> int:
                 else "ws:off"
             )
             game_hud = "  F1-F4 games" if not game_mgr.is_active() else "  Esc end game"
+            volcano_state = "erupting" if volcano_mgr.is_erupting() else f"{len(volcano_mgr._volcanoes)}v"
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  V set:{creature_set_label}  "
+                   f"O volcano:{volcano_state}  "
                    f"S sound:{sound_state}  N {dn_state}  B {bridge_state}  U {depth_state}  D {dem_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}{game_hud}")
             label = hud_font.render(hud, True, (200, 200, 200))

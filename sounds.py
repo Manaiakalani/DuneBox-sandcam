@@ -37,6 +37,9 @@ _EVENT_FILES = {
     "dino_wingflap": "dino_wingflap.wav",
     "dino_kill": "dino_kill.wav",
     "dino_extinction": "dino_extinction.wav",
+    "volcano_rumble": "volcano_rumble.wav",
+    "volcano_eruption": "volcano_eruption.wav",
+    "lava_sizzle": "lava_sizzle.wav",
 }
 
 # Volume categories
