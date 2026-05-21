@@ -13,6 +13,7 @@ D           toggle DEM terrain overlay
 [ / ]       cycle built-in terrains
 F5          save current terrain snapshot
 R           reset terrain (simulator only)
+B           toggle DuneBox bridge (TCP link to C++ app)
 Tab         open / close settings sidebar
 Esc / Q     quit
 """
