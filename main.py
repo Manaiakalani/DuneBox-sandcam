@@ -60,6 +60,7 @@ from webcam_observer import (
 )
 from bridge import AppBridge
 from depth_server import DepthStreamServer
+from volcano import VolcanoManager
 
 FPS           = 60
 BRUSH_MIN     = 8
@@ -376,6 +377,9 @@ def main() -> int:
     depth_server_enabled = config.depth_server_enabled
     if depth_server_enabled:
         depth_server.start()
+    volcano_mgr = VolcanoManager(render_w, render_h)
+    volcano_place_mode = False  # 'O' key toggles placement mode
+    app_start_time = time.monotonic()
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
     clock    = pygame.time.Clock()
@@ -520,6 +524,25 @@ def main() -> int:
                         else:
                             depth_server.stop()
                         config.request_save()
+                    elif event.key == pygame.K_o:
+                        volcano_place_mode = not volcano_place_mode
+                        dem_flash_text = (
+                            "Volcano placement ON (click to place)"
+                            if volcano_place_mode else "Volcano placement OFF"
+                        )
+                        dem_flash_timer = 2.0
+                elif event.type == pygame.MOUSEBUTTONDOWN and volcano_place_mode:
+                    if event.button == 1:
+                        vx, vy = _screen_to_scene(
+                            event.pos[0], event.pos[1],
+                            screen.get_width(), screen.get_height(),
+                            render_w, render_h,
+                        )
+                        idx = volcano_mgr.place_volcano(vx, vy)
+                        volcano_mgr.trigger_eruption(idx)
+                        volcano_place_mode = False
+                        dem_flash_text = f"Volcano placed at ({vx}, {vy})"
+                        dem_flash_timer = 2.0
                 elif event.type == pygame.MOUSEWHEEL:
                     brush_radius = max(BRUSH_MIN, min(BRUSH_MAX,
                                                       brush_radius + event.y * 4))
@@ -699,6 +722,12 @@ def main() -> int:
             if config.show_creatures:
                 creatures.draw(scene, frame)
 
+            # ── volcano system ────────────────────────────────────────────────
+            volcano_mgr.update(frame, dt)
+            volcano_mgr.draw(scene)
+            for v_snd in volcano_mgr.pop_sound_events():
+                sound_mgr.play_event(v_snd)
+
             # ── game modes ────────────────────────────────────────────────────
             game_mgr.update(frame, dt)
             game_mgr.draw(scene)
@@ -789,13 +818,89 @@ def main() -> int:
             if depth_server_enabled:
                 depth_server.push_frame(frame)
                 creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
+                _game_active = game_mgr.is_active()
+                _game_info = {"active": False}
+                if _game_active and game_mgr._active is not None:
+                    _gm = game_mgr._active
+                    _time_left = max(0.0, _gm.time_limit - _gm._elapsed) if _gm.time_limit > 0 else None
+                    _game_info = {
+                        "active": True,
+                        "mode": _gm.name,
+                        "score": _gm.get_score(),
+                        "time_left": round(_time_left, 1) if _time_left is not None else None,
+                    }
                 depth_server.push_state({
                     "fps": round(clock.get_fps(), 1),
-                    "creatures": sum(creature_counts.values()),
+                    "creatures": {
+                        "total": sum(creature_counts.values()),
+                        **creature_counts,
+                    },
                     "theme": config.colour_scheme,
-                    "water": config.show_contours,
-                    "game": game_mgr.is_active(),
+                    "water_enabled": config.show_contours,
+                    "water_coverage": float(np.mean(frame < 0.38)) if frame is not None else 0.0,
+                    "lava_active": False,
+                    "sound_muted": not config.sound_enabled,
+                    "day_night": {
+                        "enabled": day_night_enabled,
+                        "phase": day_night.get_phase() if day_night_enabled else "",
+                        "time": round(day_night.get_time_of_day(), 3) if day_night_enabled else 0.0,
+                    },
+                    "game": _game_info,
+                    "sensor": {
+                        "type": source.get_sensor_name(),
+                        "connected": True,
+                    },
+                    "dem": {
+                        "overlay": config.dem_overlay_enabled,
+                        "terrain": config.dem_current_terrain,
+                    },
+                    "clients": depth_server.get_client_count(),
+                    "uptime": round(time.monotonic() - app_start_time, 1),
                 })
+
+                # ── process dashboard commands ────────────────────────
+                for cmd in depth_server.poll_commands():
+                    action = cmd.get("action", "")
+                    value = cmd.get("value")
+                    if action == "set_theme":
+                        if value in ("terrain", "heat", "greyscale", "desert"):
+                            config.colour_scheme = value
+                            config.request_save()
+                    elif action == "toggle_water":
+                        config.show_contours = not config.show_contours
+                        config.request_save()
+                    elif action == "toggle_lava":
+                        pass  # lava not yet implemented as a toggle
+                    elif action == "toggle_sound":
+                        muted = sound_mgr.toggle_mute()
+                        config.sound_enabled = not muted
+                        config.request_save()
+                    elif action == "toggle_day_night":
+                        day_night_enabled = not day_night_enabled
+                        if not day_night_enabled:
+                            prev_day_night_phase = ""
+                    elif action == "cycle_speed":
+                        if value == "up":
+                            day_night.set_speed(day_night._speed + 0.5)
+                        elif value == "down":
+                            day_night.set_speed(max(0.1, day_night._speed - 0.5))
+                    elif action == "start_game":
+                        if value in GameManager.get_available_modes():
+                            game_mgr.start_game(value, source.get_frame())
+                    elif action == "set_dem":
+                        if value in BUILTIN_TERRAINS:
+                            dem_terrain_idx = BUILTIN_TERRAINS.index(value)
+                            try:
+                                dem_terrain = load_builtin_terrain(
+                                    value, target_shape=(render_h, render_w)
+                                )
+                            except Exception:
+                                dem_terrain = None
+                            config.dem_current_terrain = value
+                            config.dem_overlay_enabled = True
+                            dem_flash_text = f"DEM: {value}"
+                            dem_flash_timer = 2.0
+                            config.request_save()
 
             guide_message = None
             active_challenge = None

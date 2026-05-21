@@ -40,6 +40,7 @@ class DepthStreamServer:
         self._pending_frame: bytes | None = None
         self._pending_state: str | None = None
         self._last_frame_time: float = 0.0
+        self._command_queue: list[dict[str, Any]] = []
 
     # ── public API (called from main thread) ──────────────────────────
 
@@ -110,6 +111,13 @@ class DepthStreamServer:
         with self._lock:
             return len(self._clients)
 
+    def poll_commands(self) -> list[dict[str, Any]]:
+        """Return and clear any queued commands from dashboard clients."""
+        with self._lock:
+            cmds = self._command_queue
+            self._command_queue = []
+        return cmds
+
     # ── background thread ─────────────────────────────────────────────
 
     def _run(self) -> None:
@@ -162,9 +170,15 @@ class DepthStreamServer:
         with self._lock:
             self._clients.add(websocket)
         try:
-            # Keep connection alive; we only send, but drain incoming pongs
-            async for _ in websocket:
-                pass
+            async for message in websocket:
+                if isinstance(message, str):
+                    try:
+                        data = json.loads(message)
+                        if data.get("type") == "command":
+                            with self._lock:
+                                self._command_queue.append(data)
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
         except Exception:
             pass
         finally:
