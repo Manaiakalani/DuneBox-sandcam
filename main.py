@@ -43,6 +43,7 @@ from dem_loader import (
 )
 from interaction_engine import InteractionEngine
 from renderer import Renderer
+from game_modes import GameManager
 from sounds import SoundManager
 from ui import Config, Sidebar, draw_guide_overlay
 from webcam_observer import (
@@ -353,6 +354,7 @@ def main() -> int:
     sidebar  = Sidebar()
     sound_mgr = SoundManager(enabled=config.sound_enabled)
     sound_mgr.set_master_volume(config.sound_master_volume)
+    game_mgr = GameManager()
     app_bridge = AppBridge(host="127.0.0.1", port=9876, role="server")
     app_bridge.start()
     bridge_enabled = True
@@ -393,7 +395,18 @@ def main() -> int:
 
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                        running = False
+                        if game_mgr.is_active() and event.key == pygame.K_ESCAPE:
+                            game_mgr.end_game()
+                        else:
+                            running = False
+                    elif event.key == pygame.K_F1:
+                        game_mgr.start_game("dam", source.get_frame())
+                    elif event.key == pygame.K_F2:
+                        game_mgr.start_game("volcano", source.get_frame())
+                    elif event.key == pygame.K_F3:
+                        game_mgr.start_game("watershed", source.get_frame())
+                    elif event.key == pygame.K_F4:
+                        game_mgr.start_game("biome", source.get_frame())
                     elif event.key == pygame.K_TAB:
                         sidebar.toggle()
                     elif event.key == pygame.K_r:
