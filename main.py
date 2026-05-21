@@ -18,6 +18,8 @@ import time
 
 import pygame
 
+from diagnostics import show_startup_diagnostics
+
 from ai_guide import (
     AsyncConnectionTester,
     GuideEngine,
@@ -30,6 +32,7 @@ from creatures import CreatureManager
 from depth_source import KinectV1Source
 from interaction_engine import InteractionEngine
 from renderer import Renderer
+from sounds import SoundManager
 from ui import Config, Sidebar, draw_guide_overlay
 from webcam_observer import (
     AsyncCameraDiscovery,
@@ -289,11 +292,19 @@ def _make_calibration(config: Config) -> CalibrationData:
 
 
 def main() -> int:
+    extended_diag = "--diagnostics" in sys.argv
+
     pygame.init()
     pygame.display.set_caption("AR Sandbox")
 
     config  = Config.load()
     screen, screen_w, screen_h = _make_display(config)
+
+    # ── startup diagnostics ───────────────────────────────────────────
+    if not show_startup_diagnostics(screen, extended=extended_diag):
+        pygame.quit()
+        return 0
+
     if not _prewarm_creatures(screen):
         pygame.quit()
         return 0
@@ -321,6 +332,8 @@ def main() -> int:
     camera_tester = AsyncCameraTester()
     llm_tester = AsyncConnectionTester()
     sidebar  = Sidebar()
+    sound_mgr = SoundManager(enabled=config.sound_enabled)
+    sound_mgr.set_master_volume(config.sound_master_volume)
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
     clock    = pygame.time.Clock()
@@ -356,6 +369,10 @@ def main() -> int:
                         config.request_save()
                     elif event.key == pygame.K_g:
                         config.show_creatures = not config.show_creatures
+                        config.request_save()
+                    elif event.key == pygame.K_s:
+                        muted = sound_mgr.toggle_mute()
+                        config.sound_enabled = not muted
                         config.request_save()
                 elif event.type == pygame.MOUSEWHEEL:
                     brush_radius = max(BRUSH_MIN, min(BRUSH_MAX,
@@ -496,6 +513,7 @@ def main() -> int:
 
             # ── render ────────────────────────────────────────────────────────
             frame = source.get_frame()
+            sound_mgr.update(frame, dt)
             if config.show_creatures:
                 creatures.update(frame, dt)
             renderer.draw(scene, frame,
@@ -604,8 +622,10 @@ def main() -> int:
             pygame.draw.circle(screen, (255, 255, 255), (mx, my), brush_radius, 1)
 
             creatures_state = "on" if config.show_creatures else "off"
+            sound_state = "off" if not config.sound_enabled else "on"
             ai_state = "ai:on" if config.ai_enabled else "ai:off"
-            hud = (f"Tab settings  C contours  G creatures:{creatures_state}  R reset  "
+            hud = (f"Tab settings  C contours  G creatures:{creatures_state}  "
+                   f"S sound:{sound_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}")
             label = hud_font.render(hud, True, (200, 200, 200))
             screen.blit(label, (10, screen.get_height() - 24))
@@ -635,6 +655,10 @@ def main() -> int:
         try:
             if vision is not None:
                 vision.close()
+        except Exception:
+            pass
+        try:
+            sound_mgr.cleanup()
         except Exception:
             pass
         try:
