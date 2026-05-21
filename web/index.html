@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DuneBox — Depth Stream</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0e1218; color: #ccd0da;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 20px;
+  }
+  h1 { font-size: 1.3rem; font-weight: 600; color: #e0e4ee; margin-bottom: 4px; }
+  .subtitle { font-size: 0.8rem; color: #6e7488; margin-bottom: 16px; }
+
+  #status {
+    display: inline-block; padding: 4px 12px; border-radius: 20px;
+    font-size: 0.75rem; font-weight: 600; margin-bottom: 14px;
+    transition: background 0.3s, color 0.3s;
+  }
+  #status.connected    { background: #1a3a28; color: #5ab87a; }
+  #status.disconnected { background: #3a1a1a; color: #c75050; }
+  #status.connecting   { background: #2a2a1a; color: #b8a040; }
+
+  #canvas-wrap {
+    position: relative; border: 2px solid #262a38; border-radius: 10px;
+    overflow: hidden; background: #14181f; margin-bottom: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+  }
+  canvas { display: block; image-rendering: pixelated; }
+
+  #state-panel {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px; width: 100%; max-width: 640px;
+  }
+  .stat {
+    background: #181c26; border: 1px solid #262a38; border-radius: 8px;
+    padding: 10px 12px; text-align: center;
+  }
+  .stat-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: .08em; color: #6e7488; }
+  .stat-value { font-size: 1.15rem; font-weight: 700; color: #c8d0e4; margin-top: 2px; }
+
+  #fps-graph {
+    width: 100%; max-width: 640px; height: 48px;
+    background: #181c26; border: 1px solid #262a38; border-radius: 8px;
+    margin-top: 12px; overflow: hidden;
+  }
+  #fps-canvas { width: 100%; height: 100%; }
+
+  #settings {
+    margin-top: 14px; font-size: 0.8rem; color: #6e7488;
+    display: flex; align-items: center; gap: 10px;
+  }
+  #settings label { cursor: pointer; }
+  #settings input { width: 200px; padding: 4px 8px; background: #1c2030; color: #c8d0e4;
+    border: 1px solid #3a3e52; border-radius: 4px; font-family: inherit; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+  <h1>🏜️ DuneBox Depth Stream</h1>
+  <p class="subtitle">Real-time depth data from AR sandbox</p>
+  <div id="status" class="disconnected">Disconnected</div>
+
+  <div id="canvas-wrap">
+    <canvas id="depth" width="640" height="480"></canvas>
+  </div>
+
+  <div id="state-panel">
+    <div class="stat"><div class="stat-label">FPS</div><div class="stat-value" id="s-fps">—</div></div>
+    <div class="stat"><div class="stat-label">Creatures</div><div class="stat-value" id="s-creatures">—</div></div>
+    <div class="stat"><div class="stat-label">Theme</div><div class="stat-value" id="s-theme">—</div></div>
+    <div class="stat"><div class="stat-label">Water</div><div class="stat-value" id="s-water">—</div></div>
+    <div class="stat"><div class="stat-label">Frame Size</div><div class="stat-value" id="s-size">—</div></div>
+    <div class="stat"><div class="stat-label">Stream FPS</div><div class="stat-value" id="s-sfps">—</div></div>
+  </div>
+
+  <div id="fps-graph"><canvas id="fps-canvas"></canvas></div>
+
+  <div id="settings">
+    <label for="ws-url">Server:</label>
+    <input id="ws-url" type="text" value="ws://localhost:8765">
+  </div>
+
+<script>
+(function() {
+  const canvas  = document.getElementById('depth');
+  const ctx     = canvas.getContext('2d');
+  const statusEl= document.getElementById('status');
+  const urlInput= document.getElementById('ws-url');
+  const fpsG    = document.getElementById('fps-canvas').getContext('2d');
+
+  const sEls = {
+    fps:       document.getElementById('s-fps'),
+    creatures: document.getElementById('s-creatures'),
+    theme:     document.getElementById('s-theme'),
+    water:     document.getElementById('s-water'),
+    size:      document.getElementById('s-size'),
+    sfps:      document.getElementById('s-sfps'),
+  };
+
+  let ws = null;
+  let frameCount = 0;
+  let lastFpsTime = performance.now();
+  let streamFps = 0;
+  const fpsHistory = new Array(120).fill(0);
+
+  function setStatus(s) {
+    statusEl.textContent = s.charAt(0).toUpperCase() + s.slice(1);
+    statusEl.className = s;
+  }
+
+  function connect() {
+    const url = urlInput.value.trim();
+    if (!url) return;
+    setStatus('connecting');
+
+    try { ws = new WebSocket(url); } catch { setTimeout(connect, 3000); return; }
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = () => setStatus('connected');
+
+    ws.onmessage = (ev) => {
+      if (typeof ev.data === 'string') {
+        handleState(JSON.parse(ev.data));
+      } else {
+        handleFrame(ev.data);
+      }
+    };
+
+    ws.onclose = () => { setStatus('disconnected'); setTimeout(connect, 2000); };
+    ws.onerror = () => { ws.close(); };
+  }
+
+  function handleState(s) {
+    if (s.fps != null) sEls.fps.textContent = Math.round(s.fps);
+    if (s.creatures != null) sEls.creatures.textContent = s.creatures;
+    if (s.theme != null) sEls.theme.textContent = s.theme;
+    if (s.water != null) sEls.water.textContent = s.water ? 'On' : 'Off';
+  }
+
+  function handleFrame(buf) {
+    const view = new DataView(buf);
+    const w = view.getUint16(0);
+    const h = view.getUint16(2);
+    const pngData = buf.slice(4);
+
+    sEls.size.textContent = w + '×' + h;
+
+    const blob = new Blob([pngData], {type: 'image/png'});
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w; canvas.height = h;
+      }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+
+    frameCount++;
+    const now = performance.now();
+    const elapsed = now - lastFpsTime;
+    if (elapsed >= 1000) {
+      streamFps = Math.round(frameCount * 1000 / elapsed);
+      sEls.sfps.textContent = streamFps;
+      fpsHistory.push(streamFps);
+      fpsHistory.shift();
+      drawFpsGraph();
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+  }
+
+  function drawFpsGraph() {
+    const c = fpsG.canvas;
+    c.width = c.clientWidth * devicePixelRatio;
+    c.height = c.clientHeight * devicePixelRatio;
+    fpsG.clearRect(0, 0, c.width, c.height);
+
+    const max = Math.max(15, ...fpsHistory);
+    const barW = c.width / fpsHistory.length;
+
+    fpsG.fillStyle = '#2a5080';
+    for (let i = 0; i < fpsHistory.length; i++) {
+      const h = (fpsHistory[i] / max) * c.height;
+      fpsG.fillRect(i * barW, c.height - h, barW - 1, h);
+    }
+  }
+
+  urlInput.addEventListener('change', () => { if (ws) ws.close(); });
+  connect();
+})();
+</script>
+</body>
+</html>

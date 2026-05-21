@@ -14,6 +14,7 @@ D           toggle DEM terrain overlay
 F5          save current terrain snapshot
 R           reset terrain (simulator only)
 B           toggle DuneBox bridge (TCP link to C++ app)
+U           toggle WebSocket depth server (remote monitoring)
 Tab         open / close settings sidebar
 Esc / Q     quit
 """
@@ -34,6 +35,7 @@ from ai_guide import (
     build_async_narrator,
 )
 from creatures import CreatureManager
+from day_night import DayNightCycle
 # from depth_source import MouseSimulator
 from sensor_api import create_sensor
 from dem_loader import (
@@ -53,6 +55,7 @@ from webcam_observer import (
     WebcamObserver,
 )
 from bridge import AppBridge
+from depth_server import DepthStreamServer
 
 FPS           = 60
 BRUSH_MIN     = 8
@@ -354,10 +357,21 @@ def main() -> int:
     sidebar  = Sidebar()
     sound_mgr = SoundManager(enabled=config.sound_enabled)
     sound_mgr.set_master_volume(config.sound_master_volume)
+    day_night = DayNightCycle(cycle_duration=120.0)
+    day_night_enabled = True
+    prev_day_night_phase = ""
     game_mgr = GameManager()
     app_bridge = AppBridge(host="127.0.0.1", port=9876, role="server")
     app_bridge.start()
     bridge_enabled = True
+    depth_server = DepthStreamServer(
+        host="0.0.0.0",
+        port=config.depth_server_port,
+        max_fps=config.depth_server_max_fps,
+    )
+    depth_server_enabled = config.depth_server_enabled
+    if depth_server_enabled:
+        depth_server.start()
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
     clock    = pygame.time.Clock()
@@ -480,6 +494,24 @@ def main() -> int:
                             app_bridge.start()
                         else:
                             app_bridge.stop()
+                    elif event.key == pygame.K_n:
+                        day_night_enabled = not day_night_enabled
+                        if not day_night_enabled:
+                            prev_day_night_phase = ""
+                    elif event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
+                        day_night.set_speed(day_night._speed + 0.5)
+                    elif event.key == pygame.K_MINUS:
+                        day_night.set_speed(max(0.1, day_night._speed - 0.5))
+                    elif event.key == pygame.K_p:
+                        day_night.toggle_pause()
+                    elif event.key == pygame.K_u:
+                        depth_server_enabled = not depth_server_enabled
+                        config.depth_server_enabled = depth_server_enabled
+                        if depth_server_enabled:
+                            depth_server.start()
+                        else:
+                            depth_server.stop()
+                        config.request_save()
                 elif event.type == pygame.MOUSEWHEEL:
                     brush_radius = max(BRUSH_MIN, min(BRUSH_MAX,
                                                       brush_radius + event.y * 4))
@@ -619,6 +651,29 @@ def main() -> int:
 
             # ── render ────────────────────────────────────────────────────────
             frame = source.get_frame()
+
+            # Day/night cycle
+            light_tint = None
+            if day_night_enabled:
+                day_night.update(dt)
+                phase = day_night.get_phase()
+                light_tint = day_night.get_terrain_tint()
+
+                # Creature night mode
+                creatures.set_night_mode(phase == "night")
+
+                # Sound phase
+                sound_mgr.set_day_night_phase(phase)
+
+                # Dawn bird chirp one-shot
+                if phase != prev_day_night_phase:
+                    if phase == "dawn":
+                        sound_mgr.play_event("dawn_birds")
+                    prev_day_night_phase = phase
+            else:
+                creatures.set_night_mode(False)
+                sound_mgr.set_day_night_phase("day")
+
             sound_mgr.update(frame, dt)
             if config.show_creatures:
                 creatures.update(frame, dt)
@@ -626,7 +681,13 @@ def main() -> int:
                     sound_mgr.play_event(snd_event)
             renderer.draw(scene, frame,
                           show_contours=config.show_contours,
-                          colour_scheme=config.colour_scheme)
+                          colour_scheme=config.colour_scheme,
+                          light_tint=light_tint)
+
+            # Sky effects (stars, moon, sun) — after terrain, before creatures
+            if day_night_enabled:
+                day_night.draw_sky_effects(scene, frame)
+
             if config.show_creatures:
                 creatures.draw(scene, frame)
 
@@ -708,6 +769,18 @@ def main() -> int:
                     elif btype == "water_status":
                         pass  # could display as HUD overlay
 
+            # ── depth server: push frame + state to WebSocket clients ─────
+            if depth_server_enabled:
+                depth_server.push_frame(frame)
+                creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
+                depth_server.push_state({
+                    "fps": round(clock.get_fps(), 1),
+                    "creatures": sum(creature_counts.values()),
+                    "theme": config.colour_scheme,
+                    "water": config.show_contours,
+                    "game": game_mgr.is_active(),
+                })
+
             guide_message = None
             active_challenge = None
             if guide is not None:
@@ -773,17 +846,31 @@ def main() -> int:
             sound_state = "off" if not config.sound_enabled else "on"
             ai_state = "ai:on" if config.ai_enabled else "ai:off"
             dem_state = f"dem:{config.dem_current_terrain}" if config.dem_overlay_enabled else "dem:off"
+            dn_state = f"cycle:{day_night.get_phase()}" if day_night_enabled else "cycle:off"
             bridge_state = (
                 "bridge:connected" if (bridge_enabled and app_bridge.is_connected())
                 else "bridge:on" if bridge_enabled
                 else "bridge:off"
             )
+            ds_clients = depth_server.get_client_count()
+            depth_state = (
+                f"ws:{ds_clients}cl" if depth_server_enabled and ds_clients > 0
+                else "ws:on" if depth_server_enabled
+                else "ws:off"
+            )
             game_hud = "  F1-F4 games" if not game_mgr.is_active() else "  Esc end game"
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  "
-                   f"S sound:{sound_state}  B {bridge_state}  D {dem_state}  R reset  "
+                   f"S sound:{sound_state}  N {dn_state}  B {bridge_state}  U {depth_state}  D {dem_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}{game_hud}")
             label = hud_font.render(hud, True, (200, 200, 200))
             screen.blit(label, (10, screen.get_height() - 24))
+
+            # Day/night phase indicator (upper-right)
+            if day_night_enabled:
+                day_night.draw_phase_hud(
+                    screen, hud_font,
+                    screen.get_width() - 140, 10,
+                )
 
             sidebar.update(dt)
             sidebar.draw(screen, config)
@@ -822,6 +909,10 @@ def main() -> int:
             pass
         try:
             app_bridge.stop()
+        except Exception:
+            pass
+        try:
+            depth_server.stop()
         except Exception:
             pass
         try:
