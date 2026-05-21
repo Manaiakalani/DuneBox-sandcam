@@ -123,6 +123,80 @@ def marker_lost() -> None:
     _save("marker_lost.wav", samples)
 
 
+def dino_roar() -> None:
+    """Low rumbling roar for T-Rex (~0.6 s)."""
+    duration = 0.6
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    # Deep bass growl with harmonics
+    freq = np.linspace(120, 60, n)
+    base = np.sin(2 * np.pi * np.cumsum(freq) / SAMPLE_RATE)
+    harmonic = 0.3 * np.sin(2 * np.pi * np.cumsum(freq * 2) / SAMPLE_RATE)
+    noise = np.random.default_rng(99).normal(0, 0.15, n)
+    env = np.exp(-t * 3) * np.linspace(0.8, 0.0, n)
+    samples = (base + harmonic + noise) * env
+    _fade(samples, int(0.02 * SAMPLE_RATE), int(0.1 * SAMPLE_RATE))
+    _save("dino_roar.wav", samples)
+
+
+def dino_screech() -> None:
+    """High-pitched raptor screech (~0.35 s)."""
+    duration = 0.35
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    freq = np.linspace(800, 2000, n)
+    base = np.sin(2 * np.pi * np.cumsum(freq) / SAMPLE_RATE)
+    mod = 1.0 + 0.3 * np.sin(2 * np.pi * 30 * t)
+    env = np.exp(-t * 6)
+    samples = base * mod * env
+    _fade(samples, int(0.01 * SAMPLE_RATE), int(0.05 * SAMPLE_RATE))
+    _save("dino_screech.wav", samples)
+
+
+def dino_wingflap() -> None:
+    """Whooshing wing flap for Pteranodon (~0.4 s)."""
+    duration = 0.4
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    rng = np.random.default_rng(55)
+    noise = rng.normal(0, 1, n)
+    # Band-pass via difference of two low-passes
+    kernel_lo = np.ones(200) / 200
+    kernel_hi = np.ones(40) / 40
+    lp = np.convolve(noise, kernel_lo, mode="same")
+    hp = np.convolve(noise, kernel_hi, mode="same") - lp
+    env = np.sin(np.pi * t / duration) ** 2
+    samples = hp * env * 2.0
+    _fade(samples, int(0.03 * SAMPLE_RATE), int(0.05 * SAMPLE_RATE))
+    _save("dino_wingflap.wav", samples)
+
+
+def dino_kill() -> None:
+    """Short impact thud when predator catches prey (~0.2 s)."""
+    duration = 0.2
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    thud = np.sin(2 * np.pi * 80 * t) * np.exp(-t * 25)
+    crack = np.sin(2 * np.pi * 400 * t) * np.exp(-t * 40) * 0.4
+    samples = thud + crack
+    _save("dino_kill.wav", samples)
+
+
+def dino_extinction() -> None:
+    """Dramatic descending rumble for extinction event (~1.0 s)."""
+    duration = 1.0
+    n = int(SAMPLE_RATE * duration)
+    t = np.linspace(0, duration, n, endpoint=False)
+    freq = np.linspace(200, 30, n)
+    base = np.sin(2 * np.pi * np.cumsum(freq) / SAMPLE_RATE)
+    rng = np.random.default_rng(13)
+    noise = rng.normal(0, 0.3, n)
+    env = np.linspace(1.0, 0.0, n) ** 0.5
+    samples = (base + noise) * env
+    _fade(samples, int(0.05 * SAMPLE_RATE), int(0.2 * SAMPLE_RATE))
+    _save("dino_extinction.wav", samples)
+
+
 def crickets_ambient() -> None:
     """Loopable cricket chirp texture — rapid high-frequency pulses."""
     duration = 4.0
@@ -193,6 +267,11 @@ def main() -> None:
     creature_despawn()
     marker_detected()
     marker_lost()
+    dino_roar()
+    dino_screech()
+    dino_wingflap()
+    dino_kill()
+    dino_extinction()
     crickets_ambient()
     owl_ambient()
     dawn_birds()

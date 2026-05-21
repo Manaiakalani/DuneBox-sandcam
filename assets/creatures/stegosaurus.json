@@ -1,0 +1,66 @@
+{
+  "scale": 3,
+  "palette": {
+    ".": [0, 0, 0, 0],
+    "G": [90, 120, 60, 255],
+    "D": [55, 80, 35, 255],
+    "L": [120, 150, 80, 255],
+    "P": [180, 100, 50, 255],
+    "E": [30, 30, 20, 255],
+    "S": [200, 120, 60, 255]
+  },
+  "frames": [
+    [
+      "......P.P.P.P.........",
+      ".....PGPGPGPG.........",
+      "....GGGGGGGGGG........",
+      "GG.GGGGGGGGGGGGG......",
+      "GGGGGGGGGGGGGGGGE.....",
+      ".GGGGGGGGGGGGGGGE.....",
+      "..DGGGGGGGGGGGGD......",
+      "...DGGGGGGGGGD........",
+      "...DGD....DGGD........",
+      "...DD......DDD........",
+      "...D........D........."
+    ],
+    [
+      "......P.P.P.P.........",
+      ".....PGPGPGPG.........",
+      "....GGGGGGGGGG........",
+      "GG.GGGGGGGGGGGGG......",
+      "GGGGGGGGGGGGGGGGE.....",
+      ".GGGGGGGGGGGGGGGE.....",
+      "..DGGGGGGGGGGGGD......",
+      "...DGGGGGGGGGD........",
+      "..DGD.....DGGD........",
+      "..DD.......DDD........",
+      "...D.......D.........."
+    ],
+    [
+      "......P.P.P.P.........",
+      ".....PGPGPGPG.........",
+      "....GGGGGGGGGG........",
+      "GG.GGGGGGGGGGGGG......",
+      "GGGGGGGGGGGGGGGGE.....",
+      ".GGGGGGGGGGGGGGGE.....",
+      "..DGGGGGGGGGGGGD......",
+      "...DGGGGGGGGGD........",
+      "...DGD....DGGD........",
+      "...DD......DDD........",
+      "..D.........D........."
+    ],
+    [
+      "......P.P.P.P.........",
+      ".....PGPGPGPG.........",
+      "....GGGGGGGGGG........",
+      "GG.GGGGGGGGGGGGG......",
+      "GGGGGGGGGGGGGGGGE.....",
+      ".GGGGGGGGGGGGGGGE.....",
+      "..DGGGGGGGGGGGGD......",
+      "...DGGGGGGGGGD........",
+      "...DGD.....DGD........",
+      "....DD......DD........",
+      "...D........D........."
+    ]
+  ]
+}

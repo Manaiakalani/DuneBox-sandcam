@@ -8,6 +8,7 @@ Right-drag  lower terrain (simulator only)
 Scroll      resize brush  (simulator only)
 C           toggle contour lines
 G           toggle creatures
+V           cycle creature set (modern / prehistoric / all / none)
 S           toggle sound mute
 D           toggle DEM terrain overlay
 N           toggle day/night cycle

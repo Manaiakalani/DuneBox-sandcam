@@ -29,6 +29,10 @@ OBJECT_KIND_BY_MARKER = {
     3: "house",
     4: "tree",
     5: "volcano",
+    10: "trex_marker",
+    11: "raptor_marker",
+    12: "pteranodon_marker",
+    13: "extinction_marker",
 }
 _DEST_POINT_ORDER = {
     "top_left": 0,

@@ -32,6 +32,11 @@ _EVENT_FILES = {
     "marker_detected": "marker_detected.wav",
     "marker_lost": "marker_lost.wav",
     "dawn_birds": "dawn_birds.wav",
+    "dino_roar": "dino_roar.wav",
+    "dino_screech": "dino_screech.wav",
+    "dino_wingflap": "dino_wingflap.wav",
+    "dino_kill": "dino_kill.wav",
+    "dino_extinction": "dino_extinction.wav",
 }
 
 # Volume categories
