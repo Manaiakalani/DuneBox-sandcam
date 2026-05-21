@@ -13,3 +13,8 @@ dependencies = [
 
 [project.optional-dependencies]
 geo = ["rasterio>=1.3"]
+kinect-v2 = ["pylibfreenect2>=0.1"]
+orbbec = ["pyorbbecsdk>=1.0"]
+realsense = ["pyrealsense2>=2.50"]
+azure = ["pyk4a>=1.5"]
+all-sensors = ["pylibfreenect2>=0.1", "pyorbbecsdk>=1.0", "pyrealsense2>=2.50", "pyk4a>=1.5"]

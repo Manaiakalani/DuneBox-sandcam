@@ -659,11 +659,46 @@ class DummySensor(DepthSensor):
 
 @_register("kinect_v2")
 class KinectV2Sensor(DepthSensor):
-    """Kinect V2 via pylibfreenect2 — stub, not yet implemented."""
+    """
+    Kinect V2 (Xbox One) depth sensor via pylibfreenect2.
 
-    def __init__(self, **kwargs) -> None:
+    Native depth resolution: 512×424, range 0–4500 mm.
+    Requires libfreenect2 installed on the system plus the Python bindings.
+    """
+
+    _NATIVE_W, _NATIVE_H = 512, 424
+    _MAX_DEPTH_MM = 4500.0
+
+    def __init__(
+        self,
+        width: int = 512,
+        height: int = 424,
+        min_depth_mm: int = 400,
+        max_depth_mm: int = 4500,
+        device_index: int = 0,
+        pipeline: str = "auto",
+        **_kwargs,
+    ) -> None:
         self._check_import()
+        self._out_width = width
+        self._out_height = height
+        self._min = float(min_depth_mm)
+        self._max = float(max_depth_mm)
+        self._device_index = device_index
+        self._pipeline_type = pipeline
         self._connected = False
+
+        import threading
+
+        self._lock = threading.Lock()
+        self._latest_depth: np.ndarray | None = None
+        self._latest_color: np.ndarray | None = None
+
+        self._fn2 = None
+        self._device = None
+        self._listener = None
+        self._registration = None
+        self._pipeline = None
 
     @staticmethod
     def _check_import() -> None:
@@ -672,27 +707,145 @@ class KinectV2Sensor(DepthSensor):
         except ImportError as exc:
             raise ImportError(
                 "Kinect V2 support requires pylibfreenect2.\n"
-                "Install it with:  pip install pylibfreenect2\n"
-                "See: https://github.com/r9y9/pylibfreenect2"
+                "Install:  pip install pylibfreenect2\n"
+                "Also requires libfreenect2 system library:\n"
+                "  macOS:   brew install libfreenect2\n"
+                "  Ubuntu:  see https://github.com/OpenKinect/libfreenect2#linux\n"
+                "  Windows: download from https://github.com/OpenKinect/libfreenect2/releases\n"
+                "Docs: https://github.com/r9y9/pylibfreenect2"
             ) from exc
 
     def connect(self) -> bool:
-        raise NotImplementedError("Kinect V2 backend is not yet implemented")
+        if self._connected:
+            return True
+
+        import pylibfreenect2 as fn2
+
+        self._fn2 = fn2
+        freenect2 = fn2.Freenect2()
+        num_devices = freenect2.enumerateDevices()
+        if num_devices == 0:
+            raise RuntimeError(
+                "No Kinect V2 devices found. Check USB 3.0 connection."
+            )
+        if self._device_index >= num_devices:
+            raise RuntimeError(
+                f"Kinect V2 device index {self._device_index} out of range "
+                f"(found {num_devices} device(s))"
+            )
+
+        serial = freenect2.getDeviceSerialNumber(self._device_index)
+        logger.info("Opening Kinect V2 serial=%s", serial)
+
+        # Select pipeline: prefer OpenGL, fall back to CPU
+        if self._pipeline_type == "opengl":
+            pipeline = fn2.OpenGLPacketPipeline()
+        elif self._pipeline_type == "cpu":
+            pipeline = fn2.CpuPacketPipeline()
+        else:
+            try:
+                pipeline = fn2.OpenGLPacketPipeline()
+            except Exception:
+                logger.info("OpenGL pipeline unavailable, using CPU pipeline")
+                pipeline = fn2.CpuPacketPipeline()
+
+        self._pipeline = pipeline
+        device = freenect2.openDevice(serial, pipeline=pipeline)
+
+        types = fn2.FrameType.Color | fn2.FrameType.Ir | fn2.FrameType.Depth
+        listener = fn2.SyncMultiFrameListener(types)
+        device.setColorFrameListener(listener)
+        device.setIrAndDepthFrameListener(listener)
+        device.start()
+
+        registration = fn2.Registration(
+            device.getIrCameraParams(), device.getColorCameraParams()
+        )
+
+        self._device = device
+        self._listener = listener
+        self._registration = registration
+        self._freenect2 = freenect2
+        self._connected = True
+        logger.info("Kinect V2 connected (512×424 depth)")
+        return True
 
     def disconnect(self) -> None:
+        if not self._connected:
+            return
         self._connected = False
+        try:
+            if self._device is not None:
+                self._device.stop()
+                self._device.close()
+        except Exception:
+            pass
+        self._device = None
+        self._listener = None
+        self._registration = None
+        logger.info("Kinect V2 disconnected")
 
     def get_depth_frame(self) -> np.ndarray | None:
-        return None
+        if not self._connected or self._listener is None:
+            return None
+
+        fn2 = self._fn2
+        frames = self._listener.waitForNewFrame()
+        try:
+            depth_frame = frames[fn2.FrameType.Depth]
+            depth = depth_frame.asarray(np.float32).copy()  # (424, 512) mm
+        finally:
+            self._listener.release(frames)
+
+        # Clamp to configured range and normalise to 0.0–1.0
+        # Invert: close = high terrain, far = low terrain
+        depth = np.clip(depth, self._min, self._max)
+        normalised = 1.0 - (depth - self._min) / (self._max - self._min)
+        normalised = normalised.astype(np.float32)
+
+        if normalised.shape != (self._out_height, self._out_width):
+            from scipy.ndimage import zoom
+
+            zy = self._out_height / normalised.shape[0]
+            zx = self._out_width / normalised.shape[1]
+            normalised = zoom(normalised, (zy, zx), order=1).astype(
+                np.float32
+            )
+
+        with self._lock:
+            self._latest_depth = normalised
+        return normalised
 
     def get_color_frame(self) -> np.ndarray | None:
-        return None
+        if not self._connected or self._listener is None:
+            return None
+
+        fn2 = self._fn2
+        frames = self._listener.waitForNewFrame()
+        try:
+            color_frame = frames[fn2.FrameType.Color]
+            depth_frame = frames[fn2.FrameType.Depth]
+
+            undistorted = fn2.Frame(
+                self._NATIVE_W, self._NATIVE_H, 4, fn2.FrameType.Depth
+            )
+            registered = fn2.Frame(
+                self._NATIVE_W, self._NATIVE_H, 4, fn2.FrameType.Color
+            )
+            self._registration.apply(
+                color_frame, depth_frame, undistorted, registered
+            )
+            color = registered.asarray(np.uint8)[:, :, :3].copy()  # BGR→RGB
+        finally:
+            self._listener.release(frames)
+
+        return color
 
     def is_connected(self) -> bool:
         return self._connected
 
     def get_resolution(self) -> tuple[int, int]:
-        return (512, 424)
+        return (self._out_width, self._out_height)
 
     def get_sensor_name(self) -> str:
         return "Kinect V2 (pylibfreenect2)"
@@ -701,9 +854,20 @@ class KinectV2Sensor(DepthSensor):
         return {
             "name": self.get_sensor_name(),
             "resolution": self.get_resolution(),
-            "connected": False,
-            "status": "stub — not yet implemented",
+            "connected": self.is_connected(),
+            "depth_range_mm": (int(self._min), int(self._max)),
+            "pipeline": self._pipeline_type,
         }
+
+    def set_depth_range(self, min_mm: int, max_mm: int) -> None:
+        with self._lock:
+            self._min = float(min_mm)
+            self._max = float(max_mm)
+
+    def resize(self, width: int, height: int) -> None:
+        with self._lock:
+            self._out_width = width
+            self._out_height = height
 
 
 # ── Orbbec stub ───────────────────────────────────────────────────────────────
@@ -711,11 +875,47 @@ class KinectV2Sensor(DepthSensor):
 
 @_register("orbbec")
 class OrbbecSensor(DepthSensor):
-    """Orbbec depth camera via pyorbbecsdk — stub, not yet implemented."""
+    """
+    Orbbec depth camera via pyorbbecsdk.
 
-    def __init__(self, **kwargs) -> None:
-        self._check_import()
+    Supports Femto Bolt (Azure Kinect compatible), Astra, Gemini, etc.
+    Alternative: pyk4a can be used for Femto Bolt via Azure Kinect SDK.
+    """
+
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 576,
+        min_depth_mm: int = 250,
+        max_depth_mm: int = 5460,
+        device_index: int = 0,
+        use_pyk4a: bool = False,
+        **_kwargs,
+    ) -> None:
+        self._use_pyk4a = use_pyk4a
+        if use_pyk4a:
+            self._check_pyk4a()
+        else:
+            self._check_import()
+        self._out_width = width
+        self._out_height = height
+        self._min = float(min_depth_mm)
+        self._max = float(max_depth_mm)
+        self._device_index = device_index
         self._connected = False
+
+        import threading
+
+        self._lock = threading.Lock()
+
+        # pyorbbecsdk handles
+        self._pipeline = None
+        self._config = None
+        self._device = None
+        self._device_name = "Orbbec"
+
+        # pyk4a handles (alternative for Femto Bolt)
+        self._k4a = None
 
     @staticmethod
     def _check_import() -> None:
@@ -724,38 +924,235 @@ class OrbbecSensor(DepthSensor):
         except ImportError as exc:
             raise ImportError(
                 "Orbbec support requires pyorbbecsdk.\n"
-                "Install it with:  pip install pyorbbecsdk\n"
-                "See: https://github.com/orbbec/pyorbbecsdk"
+                "Install:  pip install pyorbbecsdk\n"
+                "Docs: https://github.com/orbbec/pyorbbecsdk\n\n"
+                "Alternative for Femto Bolt: use pyk4a (Azure Kinect SDK)\n"
+                "  pip install pyk4a\n"
+                "  Set sensor_type='orbbec' and use_pyk4a=true in config"
+            ) from exc
+
+    @staticmethod
+    def _check_pyk4a() -> None:
+        try:
+            import pyk4a  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "pyk4a backend requires the pyk4a package.\n"
+                "Install:  pip install pyk4a\n"
+                "Also requires Azure Kinect SDK:\n"
+                "  https://learn.microsoft.com/azure/kinect-dk/sensor-sdk-download\n"
+                "Note: The Orbbec Femto Bolt is compatible with Azure Kinect SDK."
             ) from exc
 
     def connect(self) -> bool:
-        raise NotImplementedError("Orbbec backend is not yet implemented")
+        if self._connected:
+            return True
+
+        if self._use_pyk4a:
+            return self._connect_pyk4a()
+        return self._connect_orbbec()
+
+    def _connect_orbbec(self) -> bool:
+        import pyorbbecsdk as ob
+
+        ctx = ob.Context()
+        device_list = ctx.query_devices()
+        if device_list.get_count() == 0:
+            raise RuntimeError(
+                "No Orbbec devices found. Check USB connection."
+            )
+        if self._device_index >= device_list.get_count():
+            raise RuntimeError(
+                f"Orbbec device index {self._device_index} out of range "
+                f"(found {device_list.get_count()} device(s))"
+            )
+
+        device = device_list.get_device_by_index(self._device_index)
+        device_info = device.get_device_info()
+        self._device_name = device_info.get_name()
+        logger.info("Opening Orbbec device: %s", self._device_name)
+
+        pipeline = ob.Pipeline(device)
+        config = ob.Config()
+
+        # Enable depth stream — use default profile (device picks best mode)
+        depth_profiles = pipeline.get_stream_profile_list(
+            ob.OBSensorType.DEPTH_SENSOR
+        )
+        depth_profile = depth_profiles.get_default_video_stream_profile()
+        config.enable_stream(depth_profile)
+
+        # Enable colour stream if available
+        try:
+            color_profiles = pipeline.get_stream_profile_list(
+                ob.OBSensorType.COLOR_SENSOR
+            )
+            color_profile = color_profiles.get_default_video_stream_profile()
+            config.enable_stream(color_profile)
+        except Exception:
+            logger.info("Orbbec colour stream not available on this device")
+
+        pipeline.start(config)
+
+        self._pipeline = pipeline
+        self._config = config
+        self._device = device
+        self._ctx = ctx
+        self._connected = True
+        logger.info("Orbbec %s connected", self._device_name)
+        return True
+
+    def _connect_pyk4a(self) -> bool:
+        from pyk4a import Config as K4AConfig
+        from pyk4a import PyK4A
+
+        k4a = PyK4A(
+            K4AConfig(
+                depth_mode=self._get_k4a_depth_mode(),
+                color_resolution=self._get_k4a_color_res(),
+            ),
+            device_id=self._device_index,
+        )
+        k4a.start()
+        self._k4a = k4a
+        self._device_name = "Femto Bolt (pyk4a)"
+        self._connected = True
+        logger.info("Orbbec Femto Bolt connected via pyk4a")
+        return True
+
+    @staticmethod
+    def _get_k4a_depth_mode():
+        from pyk4a import DepthMode
+        return DepthMode.NFOV_UNBINNED  # 640×576
+
+    @staticmethod
+    def _get_k4a_color_res():
+        from pyk4a import ColorResolution
+        return ColorResolution.RES_720P
 
     def disconnect(self) -> None:
+        if not self._connected:
+            return
         self._connected = False
+        try:
+            if self._pipeline is not None:
+                self._pipeline.stop()
+        except Exception:
+            pass
+        try:
+            if self._k4a is not None:
+                self._k4a.stop()
+        except Exception:
+            pass
+        self._pipeline = None
+        self._k4a = None
+        self._device = None
+        logger.info("Orbbec disconnected")
 
     def get_depth_frame(self) -> np.ndarray | None:
-        return None
+        if not self._connected:
+            return None
+
+        if self._use_pyk4a:
+            return self._get_depth_pyk4a()
+        return self._get_depth_orbbec()
+
+    def _get_depth_orbbec(self) -> np.ndarray | None:
+        frameset = self._pipeline.wait_for_frames(100)
+        if frameset is None:
+            return None
+
+        depth_frame = frameset.get_depth_frame()
+        if depth_frame is None:
+            return None
+
+        depth = np.frombuffer(
+            depth_frame.get_data(), dtype=np.uint16
+        ).reshape(depth_frame.get_height(), depth_frame.get_width())
+        depth = depth.astype(np.float32)
+
+        depth = np.clip(depth, self._min, self._max)
+        normalised = 1.0 - (depth - self._min) / (self._max - self._min)
+        normalised = normalised.astype(np.float32)
+
+        if normalised.shape != (self._out_height, self._out_width):
+            from scipy.ndimage import zoom
+
+            zy = self._out_height / normalised.shape[0]
+            zx = self._out_width / normalised.shape[1]
+            normalised = zoom(normalised, (zy, zx), order=1).astype(
+                np.float32
+            )
+        return normalised
+
+    def _get_depth_pyk4a(self) -> np.ndarray | None:
+        capture = self._k4a.get_capture()
+        if capture.depth is None:
+            return None
+
+        depth = capture.depth.astype(np.float32)  # (H, W) in mm
+        depth = np.clip(depth, self._min, self._max)
+        normalised = 1.0 - (depth - self._min) / (self._max - self._min)
+        normalised = normalised.astype(np.float32)
+
+        if normalised.shape != (self._out_height, self._out_width):
+            from scipy.ndimage import zoom
+
+            zy = self._out_height / normalised.shape[0]
+            zx = self._out_width / normalised.shape[1]
+            normalised = zoom(normalised, (zy, zx), order=1).astype(
+                np.float32
+            )
+        return normalised
 
     def get_color_frame(self) -> np.ndarray | None:
-        return None
+        if not self._connected:
+            return None
+
+        if self._use_pyk4a:
+            capture = self._k4a.get_capture()
+            if capture.color is None:
+                return None
+            return capture.color[:, :, :3].copy()  # BGRA → BGR → first 3 ch
+
+        frameset = self._pipeline.wait_for_frames(100)
+        if frameset is None:
+            return None
+        color_frame = frameset.get_color_frame()
+        if color_frame is None:
+            return None
+        color = np.frombuffer(
+            color_frame.get_data(), dtype=np.uint8
+        ).reshape(color_frame.get_height(), color_frame.get_width(), -1)
+        return color[:, :, :3].copy()
 
     def is_connected(self) -> bool:
         return self._connected
 
     def get_resolution(self) -> tuple[int, int]:
-        return (640, 480)
+        return (self._out_width, self._out_height)
 
     def get_sensor_name(self) -> str:
-        return "Orbbec (pyorbbecsdk)"
+        return f"Orbbec {self._device_name}"
 
     def get_sensor_info(self) -> dict:
         return {
             "name": self.get_sensor_name(),
             "resolution": self.get_resolution(),
-            "connected": False,
-            "status": "stub — not yet implemented",
+            "connected": self.is_connected(),
+            "depth_range_mm": (int(self._min), int(self._max)),
+            "backend": "pyk4a" if self._use_pyk4a else "pyorbbecsdk",
         }
+
+    def set_depth_range(self, min_mm: int, max_mm: int) -> None:
+        with self._lock:
+            self._min = float(min_mm)
+            self._max = float(max_mm)
+
+    def resize(self, width: int, height: int) -> None:
+        with self._lock:
+            self._out_width = width
+            self._out_height = height
 
 
 # ── RealSense stub ────────────────────────────────────────────────────────────
@@ -763,11 +1160,40 @@ class OrbbecSensor(DepthSensor):
 
 @_register("realsense")
 class RealSenseSensor(DepthSensor):
-    """Intel RealSense via pyrealsense2 — stub, not yet implemented."""
+    """
+    Intel RealSense depth camera via pyrealsense2.
 
-    def __init__(self, **kwargs) -> None:
+    Supports D400 series (D435, D435i, D415), L515, etc.
+    Typical depth ranges: D435 0.1–10 m, L515 0.25–9 m.
+    """
+
+    def __init__(
+        self,
+        width: int = 640,
+        height: int = 480,
+        min_depth_mm: int = 100,
+        max_depth_mm: int = 10000,
+        device_index: int = 0,
+        fps: int = 30,
+        **_kwargs,
+    ) -> None:
         self._check_import()
+        self._out_width = width
+        self._out_height = height
+        self._min = float(min_depth_mm)
+        self._max = float(max_depth_mm)
+        self._device_index = device_index
+        self._fps = fps
         self._connected = False
+
+        import threading
+
+        self._lock = threading.Lock()
+
+        self._pipeline = None
+        self._profile = None
+        self._depth_scale = 1.0  # mm per depth unit
+        self._device_name = "RealSense"
 
     @staticmethod
     def _check_import() -> None:
@@ -776,38 +1202,153 @@ class RealSenseSensor(DepthSensor):
         except ImportError as exc:
             raise ImportError(
                 "RealSense support requires pyrealsense2.\n"
-                "Install it with:  pip install pyrealsense2\n"
-                "See: https://github.com/IntelRealSense/librealsense"
+                "Install:  pip install pyrealsense2\n"
+                "Docs: https://github.com/IntelRealSense/librealsense\n"
+                "Note: On ARM/macOS you may need to build from source."
             ) from exc
 
     def connect(self) -> bool:
-        raise NotImplementedError("RealSense backend is not yet implemented")
+        if self._connected:
+            return True
+
+        import pyrealsense2 as rs
+
+        ctx = rs.context()
+        devices = ctx.query_devices()
+        if len(devices) == 0:
+            raise RuntimeError(
+                "No RealSense devices found. Check USB connection."
+            )
+        if self._device_index >= len(devices):
+            raise RuntimeError(
+                f"RealSense device index {self._device_index} out of range "
+                f"(found {len(devices)} device(s))"
+            )
+
+        dev = devices[self._device_index]
+        self._device_name = dev.get_info(rs.camera_info.name)
+        serial = dev.get_info(rs.camera_info.serial_number)
+        logger.info("Opening RealSense %s (serial=%s)", self._device_name, serial)
+
+        pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_device(serial)
+
+        # Detect native resolution from device product line
+        depth_w, depth_h = self._out_width, self._out_height
+        product_line = dev.get_info(rs.camera_info.product_line)
+        if "L500" in product_line:
+            depth_w, depth_h = 1024, 768
+        elif "D400" in product_line:
+            depth_w, depth_h = 1280, 720
+
+        config.enable_stream(
+            rs.stream.depth, depth_w, depth_h, rs.format.z16, self._fps
+        )
+
+        # Enable colour stream if available
+        try:
+            config.enable_stream(
+                rs.stream.color, 640, 480, rs.format.bgr8, self._fps
+            )
+        except Exception:
+            logger.info("RealSense colour stream not available")
+
+        profile = pipeline.start(config)
+
+        # Get depth scale (convert raw depth units to millimetres)
+        depth_sensor = profile.get_device().first_depth_sensor()
+        self._depth_scale = depth_sensor.get_depth_scale() * 1000.0  # to mm
+
+        self._pipeline = pipeline
+        self._profile = profile
+        self._rs = rs
+        self._connected = True
+        logger.info(
+            "RealSense %s connected (%dx%d depth)",
+            self._device_name, depth_w, depth_h,
+        )
+        return True
 
     def disconnect(self) -> None:
+        if not self._connected:
+            return
         self._connected = False
+        try:
+            if self._pipeline is not None:
+                self._pipeline.stop()
+        except Exception:
+            pass
+        self._pipeline = None
+        self._profile = None
+        logger.info("RealSense disconnected")
 
     def get_depth_frame(self) -> np.ndarray | None:
-        return None
+        if not self._connected or self._pipeline is None:
+            return None
+
+        frames = self._pipeline.wait_for_frames(timeout_ms=5000)
+        depth_frame = frames.get_depth_frame()
+        if not depth_frame:
+            return None
+
+        depth = (
+            np.asanyarray(depth_frame.get_data()).astype(np.float32)
+            * self._depth_scale
+        )  # now in mm
+
+        depth = np.clip(depth, self._min, self._max)
+        normalised = 1.0 - (depth - self._min) / (self._max - self._min)
+        normalised = normalised.astype(np.float32)
+
+        if normalised.shape != (self._out_height, self._out_width):
+            from scipy.ndimage import zoom
+
+            zy = self._out_height / normalised.shape[0]
+            zx = self._out_width / normalised.shape[1]
+            normalised = zoom(normalised, (zy, zx), order=1).astype(
+                np.float32
+            )
+        return normalised
 
     def get_color_frame(self) -> np.ndarray | None:
-        return None
+        if not self._connected or self._pipeline is None:
+            return None
+
+        frames = self._pipeline.wait_for_frames(timeout_ms=5000)
+        color_frame = frames.get_color_frame()
+        if not color_frame:
+            return None
+
+        return np.asanyarray(color_frame.get_data()).copy()
 
     def is_connected(self) -> bool:
         return self._connected
 
     def get_resolution(self) -> tuple[int, int]:
-        return (640, 480)
+        return (self._out_width, self._out_height)
 
     def get_sensor_name(self) -> str:
-        return "Intel RealSense (pyrealsense2)"
+        return f"Intel {self._device_name}"
 
     def get_sensor_info(self) -> dict:
         return {
             "name": self.get_sensor_name(),
             "resolution": self.get_resolution(),
-            "connected": False,
-            "status": "stub — not yet implemented",
+            "connected": self.is_connected(),
+            "depth_range_mm": (int(self._min), int(self._max)),
+            "depth_scale_mm": self._depth_scale,
         }
+
+    def set_depth_range(self, min_mm: int, max_mm: int) -> None:
+        with self._lock:
+            self._min = float(min_mm)
+            self._max = float(max_mm)
+
+    def resize(self, width: int, height: int) -> None:
+        with self._lock:
+            self._out_width = width
+            self._out_height = height
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
