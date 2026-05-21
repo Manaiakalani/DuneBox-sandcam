@@ -47,6 +47,7 @@ LLM_BACKENDS = [
     ("cloud_openai_compatible", "Cloud"),
 ]
 CONFIG_PATH = pathlib.Path(__file__).with_name("sandcam-settings.json")
+EXAMPLE_CONFIG_PATH = pathlib.Path(__file__).with_name("sandcam-settings.example.json")
 _GUIDE_FONTS: tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font] | None = None
 SLIDER_SPECS = {
     "min": {"label": "Min", "lo": 100, "hi": 2000, "kind": "int"},
@@ -114,7 +115,11 @@ class Config:
     @classmethod
     def load(cls) -> "Config":
         config = cls()
-        if not CONFIG_PATH.exists():
+        path = CONFIG_PATH
+        if not path.exists() and EXAMPLE_CONFIG_PATH.exists():
+            import shutil
+            shutil.copy2(EXAMPLE_CONFIG_PATH, path)
+        if not path.exists():
             return config
 
         try:
