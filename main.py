@@ -630,6 +630,14 @@ def main() -> int:
             if config.show_creatures:
                 creatures.draw(scene, frame)
 
+            # ── game modes ────────────────────────────────────────────────────
+            game_mgr.update(frame, dt)
+            game_mgr.draw(scene)
+            if game_mgr.pop_started():
+                sound_mgr.play_event("marker_detected")
+            if game_mgr.pop_ended():
+                sound_mgr.play_event("creature_despawn")
+
             vision_events = []
             vision_objects = []
             if config.vision_enabled and vision is not None:
@@ -770,9 +778,10 @@ def main() -> int:
                 else "bridge:on" if bridge_enabled
                 else "bridge:off"
             )
+            game_hud = "  F1-F4 games" if not game_mgr.is_active() else "  Esc end game"
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  "
                    f"S sound:{sound_state}  B {bridge_state}  D {dem_state}  R reset  "
-                   f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}")
+                   f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}{game_hud}")
             label = hud_font.render(hud, True, (200, 200, 200))
             screen.blit(label, (10, screen.get_height() - 24))
 
