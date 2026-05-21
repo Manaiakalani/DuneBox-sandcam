@@ -26,13 +26,24 @@ A lightweight, cross-platform augmented reality sandbox built with Python, pygam
 
 ## Quick Start
 
+### Windows (one click)
+Double-click **`run.bat`** — it installs Python and dependencies automatically, then launches.
+
+Or use the full setup script:
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+git clone https://github.com/Manaiakalani/DuneBox-docs.git
+cd DuneBox-docs\scripts; .\setup-windows.ps1
+```
+
+### Any platform (manual)
 ```bash
 pip install uv
 uv sync
 uv run python main.py
-
-# Runs in mouse simulator mode if no Kinect is connected
 ```
+
+Runs in **mouse simulator mode** if no Kinect is connected — no hardware needed to try it out.
 
 ## Project Structure
 
