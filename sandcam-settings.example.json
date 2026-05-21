@@ -20,6 +20,8 @@
   "min_depth_mm": 188,
   "object_reactions_enabled": false,
   "persistence_frames": 1,
+  "sensor_fallback": "mouse_simulator",
+  "sensor_type": "kinect_v1",
   "shark_count": 5,
   "show_contours": false,
   "show_creatures": true,

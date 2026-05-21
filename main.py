@@ -9,6 +9,9 @@ Scroll      resize brush  (simulator only)
 C           toggle contour lines
 G           toggle creatures
 S           toggle sound mute
+D           toggle DEM terrain overlay
+[ / ]       cycle built-in terrains
+F5          save current terrain snapshot
 R           reset terrain (simulator only)
 Tab         open / close settings sidebar
 Esc / Q     quit
@@ -17,6 +20,7 @@ Esc / Q     quit
 import sys
 import time
 
+import numpy as np
 import pygame
 
 from diagnostics import show_startup_diagnostics
@@ -30,7 +34,12 @@ from ai_guide import (
 )
 from creatures import CreatureManager
 # from depth_source import MouseSimulator
-from depth_source import KinectV1Source
+from sensor_api import create_sensor
+from dem_loader import (
+    BUILTIN_TERRAINS,
+    load_builtin_terrain,
+    save_terrain_snapshot,
+)
 from interaction_engine import InteractionEngine
 from renderer import Renderer
 from sounds import SoundManager
@@ -41,6 +50,7 @@ from webcam_observer import (
     CalibrationData,
     WebcamObserver,
 )
+from bridge import AppBridge
 
 FPS           = 60
 BRUSH_MIN     = 8
@@ -313,13 +323,20 @@ def main() -> int:
     scene = pygame.Surface((render_w, render_h))
 
     # source  = MouseSimulator(render_w, render_h)
-    source   = KinectV1Source(render_w, render_h,
-                              min_depth_mm=config.min_depth_mm,
-                              max_depth_mm=config.max_depth_mm,
-                              temporal_alpha=config.temporal_alpha,
-                              change_threshold_mm=config.change_threshold_mm,
-                              persistence_frames=config.persistence_frames,
-                              foreground_reject_mm=config.foreground_reject_mm)
+    source   = create_sensor(
+        {
+            "sensor_type": config.sensor_type,
+            "sensor_fallback": config.sensor_fallback,
+        },
+        width=render_w,
+        height=render_h,
+        min_depth_mm=config.min_depth_mm,
+        max_depth_mm=config.max_depth_mm,
+        temporal_alpha=config.temporal_alpha,
+        change_threshold_mm=config.change_threshold_mm,
+        persistence_frames=config.persistence_frames,
+        foreground_reject_mm=config.foreground_reject_mm,
+    )
     renderer = Renderer(render_w, render_h)
     creatures = CreatureManager(
         n_sharks=config.shark_count,
@@ -335,11 +352,27 @@ def main() -> int:
     sidebar  = Sidebar()
     sound_mgr = SoundManager(enabled=config.sound_enabled)
     sound_mgr.set_master_volume(config.sound_master_volume)
+    app_bridge = AppBridge(host="127.0.0.1", port=9876, role="server")
+    app_bridge.start()
+    bridge_enabled = True
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
     clock    = pygame.time.Clock()
 
     brush_radius = BRUSH_DEFAULT
+
+    # ── DEM overlay state ─────────────────────────────────────────────
+    dem_terrain: np.ndarray | None = None
+    dem_terrain_idx = max(0, BUILTIN_TERRAINS.index(config.dem_current_terrain)) if config.dem_current_terrain in BUILTIN_TERRAINS else 0
+    dem_flash_timer = 0.0  # seconds remaining to show terrain name on screen
+    dem_flash_text = ""
+    if config.dem_overlay_enabled:
+        try:
+            dem_terrain = load_builtin_terrain(
+                BUILTIN_TERRAINS[dem_terrain_idx], target_shape=(render_h, render_w)
+            )
+        except Exception:
+            dem_terrain = None
 
     try:
         running = True
@@ -375,6 +408,64 @@ def main() -> int:
                         muted = sound_mgr.toggle_mute()
                         config.sound_enabled = not muted
                         config.request_save()
+                    elif event.key == pygame.K_d:
+                        config.dem_overlay_enabled = not config.dem_overlay_enabled
+                        if config.dem_overlay_enabled and dem_terrain is None:
+                            try:
+                                name = BUILTIN_TERRAINS[dem_terrain_idx]
+                                dem_terrain = load_builtin_terrain(
+                                    name, target_shape=(render_h, render_w)
+                                )
+                                config.dem_current_terrain = name
+                            except Exception:
+                                dem_terrain = None
+                        dem_flash_text = (
+                            f"DEM: {BUILTIN_TERRAINS[dem_terrain_idx]}"
+                            if config.dem_overlay_enabled else "DEM off"
+                        )
+                        dem_flash_timer = 2.0
+                        config.request_save()
+                    elif event.key == pygame.K_LEFTBRACKET:
+                        dem_terrain_idx = (dem_terrain_idx - 1) % len(BUILTIN_TERRAINS)
+                        name = BUILTIN_TERRAINS[dem_terrain_idx]
+                        try:
+                            dem_terrain = load_builtin_terrain(
+                                name, target_shape=(render_h, render_w)
+                            )
+                        except Exception:
+                            dem_terrain = None
+                        config.dem_current_terrain = name
+                        config.dem_overlay_enabled = True
+                        dem_flash_text = f"DEM: {name}"
+                        dem_flash_timer = 2.0
+                        config.request_save()
+                    elif event.key == pygame.K_RIGHTBRACKET:
+                        dem_terrain_idx = (dem_terrain_idx + 1) % len(BUILTIN_TERRAINS)
+                        name = BUILTIN_TERRAINS[dem_terrain_idx]
+                        try:
+                            dem_terrain = load_builtin_terrain(
+                                name, target_shape=(render_h, render_w)
+                            )
+                        except Exception:
+                            dem_terrain = None
+                        config.dem_current_terrain = name
+                        config.dem_overlay_enabled = True
+                        dem_flash_text = f"DEM: {name}"
+                        dem_flash_timer = 2.0
+                        config.request_save()
+                    elif event.key == pygame.K_F5:
+                        try:
+                            saved = save_terrain_snapshot(frame)
+                            dem_flash_text = f"Saved: {saved.name}"
+                        except Exception as exc:
+                            dem_flash_text = f"Save failed: {exc}"
+                        dem_flash_timer = 2.5
+                    elif event.key == pygame.K_b:
+                        bridge_enabled = not bridge_enabled
+                        if bridge_enabled:
+                            app_bridge.start()
+                        else:
+                            app_bridge.stop()
                 elif event.type == pygame.MOUSEWHEEL:
                     brush_radius = max(BRUSH_MIN, min(BRUSH_MAX,
                                                       brush_radius + event.y * 4))
@@ -576,6 +667,25 @@ def main() -> int:
                 for _ve in vision_events:
                     sound_mgr.play_event("marker_detected")
 
+            # ── bridge: send detected markers, handle incoming ────────────
+            if bridge_enabled and app_bridge.is_connected():
+                for obj in vision_objects:
+                    if hasattr(obj, "marker_id") and hasattr(obj, "position"):
+                        app_bridge.send({
+                            "type": "marker_detected",
+                            "marker_id": obj.marker_id,
+                            "position": list(obj.position),
+                            "timestamp": time.time(),
+                        })
+                for bmsg in app_bridge.poll():
+                    btype = bmsg.get("type", "")
+                    if btype == "theme_change":
+                        new_scheme = bmsg.get("theme", "")
+                        if new_scheme in ("terrain", "heat", "greyscale", "desert"):
+                            config.colour_scheme = new_scheme
+                    elif btype == "water_status":
+                        pass  # could display as HUD overlay
+
             guide_message = None
             active_challenge = None
             if guide is not None:
@@ -626,11 +736,28 @@ def main() -> int:
 
             pygame.draw.circle(screen, (255, 255, 255), (mx, my), brush_radius, 1)
 
+            # ── DEM flash notification ────────────────────────────────────
+            if dem_flash_timer > 0:
+                dem_flash_timer -= dt
+                flash_alpha = min(255, int(255 * min(1.0, dem_flash_timer / 0.3)))
+                flash_surf = hud_font.render(dem_flash_text, True, (255, 230, 90))
+                flash_surf.set_alpha(flash_alpha)
+                screen.blit(
+                    flash_surf,
+                    (screen.get_width() // 2 - flash_surf.get_width() // 2, 30),
+                )
+
             creatures_state = "on" if config.show_creatures else "off"
             sound_state = "off" if not config.sound_enabled else "on"
             ai_state = "ai:on" if config.ai_enabled else "ai:off"
+            dem_state = f"dem:{config.dem_current_terrain}" if config.dem_overlay_enabled else "dem:off"
+            bridge_state = (
+                "bridge:connected" if (bridge_enabled and app_bridge.is_connected())
+                else "bridge:on" if bridge_enabled
+                else "bridge:off"
+            )
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  "
-                   f"S sound:{sound_state}  R reset  "
+                   f"S sound:{sound_state}  B {bridge_state}  D {dem_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}")
             label = hud_font.render(hud, True, (200, 200, 200))
             screen.blit(label, (10, screen.get_height() - 24))
@@ -668,6 +795,10 @@ def main() -> int:
             pass
         try:
             llm_tester.close()
+        except Exception:
+            pass
+        try:
+            app_bridge.stop()
         except Exception:
             pass
         try:

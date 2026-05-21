@@ -78,6 +78,8 @@ class Config:
     fullscreen: bool = False
     windowed_w: int = 900
     windowed_h: int = 650
+    sensor_type: str = "kinect_v1"
+    sensor_fallback: str = "mouse_simulator"
     ai_enabled: bool = False
     guide_enabled: bool = True
     guide_challenges_enabled: bool = True
@@ -96,6 +98,9 @@ class Config:
     vision_calibration_points: list[list[float]] | None = None
     sound_enabled: bool = True
     sound_master_volume: float = 0.7
+    dem_overlay_enabled: bool = False
+    dem_current_terrain: str = "canyon"
+    dem_blend_factor: float = 0.5
     vision_calibrating: bool = False
     sound_changed: bool = False
     display_changed: bool = False
@@ -161,6 +166,15 @@ class Config:
         if config.llm_backend not in {backend for backend, _ in LLM_BACKENDS}:
             config.llm_backend = "template"
 
+        _VALID_SENSORS = {
+            "kinect_v1", "kinect_v2", "orbbec", "realsense",
+            "mouse_simulator", "dummy",
+        }
+        if config.sensor_type not in _VALID_SENSORS:
+            config.sensor_type = "kinect_v1"
+        if config.sensor_fallback not in _VALID_SENSORS:
+            config.sensor_fallback = "mouse_simulator"
+
         config.min_depth_mm = int(config.min_depth_mm)
         config.max_depth_mm = max(int(config.max_depth_mm), config.min_depth_mm + 50)
         config.temporal_alpha = float(config.temporal_alpha)
@@ -182,6 +196,7 @@ class Config:
         if not config.vision_calibration_points or len(config.vision_calibration_points) != 4:
             config.vision_calibration_points = []
         config.sound_master_volume = max(0.0, min(1.0, float(config.sound_master_volume)))
+        config.dem_blend_factor = max(0.0, min(1.0, float(config.dem_blend_factor)))
         return config
 
     def save(self) -> None:
@@ -216,8 +231,13 @@ class Config:
             "camera_index": self.camera_index,
             "vision_debug_enabled": self.vision_debug_enabled,
             "vision_calibration_points": self.vision_calibration_points or [],
+            "sensor_type": self.sensor_type,
+            "sensor_fallback": self.sensor_fallback,
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
+            "dem_overlay_enabled": self.dem_overlay_enabled,
+            "dem_current_terrain": self.dem_current_terrain,
+            "dem_blend_factor": self.dem_blend_factor,
         }
         CONFIG_PATH.write_text(
             json.dumps(payload, indent=2, sort_keys=True),
