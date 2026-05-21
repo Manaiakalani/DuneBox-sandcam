@@ -37,7 +37,7 @@ class AppBridge:
         self._role = role  # 'server' or 'client'
 
         self._running = False
-        self._connected = False
+        self._connected_event = threading.Event()
         self._thread: threading.Thread | None = None
 
         # Thread-safe queues for send / receive
@@ -84,7 +84,7 @@ class AppBridge:
         return msgs
 
     def is_connected(self) -> bool:
-        return self._connected
+        return self._connected_event.is_set()
 
     # ── background thread ─────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ class AppBridge:
                     self._run_client()
             except Exception:
                 log.exception("Bridge thread error")
-                self._connected = False
+                self._connected_event.clear()
                 self._close_conn()
                 if self._running:
                     time.sleep(2.0)
@@ -118,7 +118,7 @@ class AppBridge:
                 log.info("Bridge client connected from %s", addr)
                 conn.setblocking(False)
                 self._conn_sock = conn
-                self._connected = True
+                self._connected_event.set()
                 self._service_connection()
             except socket.timeout:
                 continue
@@ -138,11 +138,11 @@ class AppBridge:
                 sock.connect((self._host, self._port))
                 sock.setblocking(False)
                 self._conn_sock = sock
-                self._connected = True
+                self._connected_event.set()
                 log.info("Bridge connected to %s:%d", self._host, self._port)
                 self._service_connection()
             except (ConnectionRefusedError, OSError):
-                self._connected = False
+                self._connected_event.clear()
                 self._close_conn()
                 if self._running:
                     time.sleep(2.0)
@@ -153,7 +153,7 @@ class AppBridge:
         sock = self._conn_sock
         assert sock is not None
 
-        while self._running and self._connected:
+        while self._running and self._connected_event.is_set():
             # ── send queued messages ──
             while not self._send_q.empty():
                 try:
@@ -161,7 +161,7 @@ class AppBridge:
                     line = json.dumps(msg, separators=(",", ":")) + "\n"
                     sock.sendall(line.encode("utf-8"))
                 except (BrokenPipeError, ConnectionResetError, OSError):
-                    self._connected = False
+                    self._connected_event.clear()
                     return
                 except queue.Empty:
                     break
@@ -173,7 +173,7 @@ class AppBridge:
                     data = sock.recv(4096)
                     if not data:
                         log.info("Bridge peer disconnected")
-                        self._connected = False
+                        self._connected_event.clear()
                         return
                     buf += data
                     while b"\n" in buf:
@@ -191,7 +191,7 @@ class AppBridge:
                         except json.JSONDecodeError:
                             log.warning("Bridge: invalid JSON: %s", line[:120])
             except (ConnectionResetError, OSError):
-                self._connected = False
+                self._connected_event.clear()
                 return
 
     # ── cleanup ───────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ class AppBridge:
             except OSError:
                 pass
             self._conn_sock = None
-        self._connected = False
+        self._connected_event.clear()
 
     def _close_all(self) -> None:
         self._close_conn()

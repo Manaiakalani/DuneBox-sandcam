@@ -92,7 +92,9 @@ class DepthStreamServer:
         except Exception:
             log.debug("DepthStreamServer: frame encode failed", exc_info=True)
 
-        if self._loop is not None and self._clients:
+        with self._lock:
+            has_clients = bool(self._clients)
+        if self._loop is not None and has_clients:
             self._loop.call_soon_threadsafe(self._schedule_broadcast)
 
     def push_state(self, state: dict[str, Any]) -> None:
@@ -104,7 +106,9 @@ class DepthStreamServer:
         except Exception:
             log.debug("DepthStreamServer: state encode failed", exc_info=True)
 
-        if self._loop is not None and self._clients:
+        with self._lock:
+            has_clients = bool(self._clients)
+        if self._loop is not None and has_clients:
             self._loop.call_soon_threadsafe(self._schedule_broadcast)
 
     def get_client_count(self) -> int:
