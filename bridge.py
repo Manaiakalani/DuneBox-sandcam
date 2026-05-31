@@ -22,6 +22,11 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
+# Safety cap on a single NDJSON line. A well-formed message is a few hundred
+# bytes; anything larger means a malformed or hostile peer sending an
+# unterminated stream, so we drop the connection instead of buffering forever.
+MAX_LINE_BYTES = 64 * 1024
+
 
 class AppBridge:
     """TCP bridge between DuneBox-sandcam (Python/server) and DuneBox (C++/client)."""
@@ -176,6 +181,14 @@ class AppBridge:
                         self._connected_event.clear()
                         return
                     buf += data
+                    if b"\n" not in buf and len(buf) > MAX_LINE_BYTES:
+                        log.warning(
+                            "Bridge: line exceeded %d bytes with no newline; "
+                            "dropping connection",
+                            MAX_LINE_BYTES,
+                        )
+                        self._connected_event.clear()
+                        return
                     while b"\n" in buf:
                         line, buf = buf.split(b"\n", 1)
                         line = line.strip()

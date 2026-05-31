@@ -65,4 +65,4 @@ jobs:
           PY
 
       - name: Unit tests
-        run: uv run python -m unittest test_ai_guide test_vision -v
+        run: uv run python -m unittest test_ai_guide test_vision test_bridge -v
