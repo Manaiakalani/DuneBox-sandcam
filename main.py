@@ -506,7 +506,7 @@ def main() -> int:
                         config.request_save()
                     elif event.key == pygame.K_F5:
                         try:
-                            saved = save_terrain_snapshot(frame)
+                            saved = save_terrain_snapshot(source.get_frame())
                             dem_flash_text = f"Saved: {saved.name}"
                         except Exception as exc:
                             dem_flash_text = f"Save failed: {exc}"

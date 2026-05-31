@@ -128,7 +128,7 @@ class DepthStreamServer:
         """Entry point for the background thread."""
         try:
             import websockets  # noqa: F811
-            import websockets.server
+            import websockets.server  # noqa: F401  (verifies server submodule is available)
         except ImportError:
             log.error("DepthStreamServer: 'websockets' package not installed")
             self._running = False

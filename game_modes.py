@@ -7,14 +7,11 @@ Includes a lightweight CPU-based water-flow simulation for game logic.
 
 from __future__ import annotations
 
-import math
-import time
 from abc import ABC, abstractmethod
 
 import numpy as np
 import pygame
 
-from renderer import WATER_LEVEL
 
 # ── Lightweight water-flow simulation ──────────────────────────────────────────
 
@@ -408,8 +405,8 @@ class VolcanoDefense(GameMode):
 
         # scale coords to surface
         h, w = max(1, self._lava.shape[0]), max(1, self._lava.shape[1])
-        sx = lambda c: int(c * sw / w)
-        sy = lambda r: int(r * sh / h)
+        def sx(c): return int(c * sw / w)
+        def sy(r): return int(r * sh / h)
 
         # volcano marker
         py, px = self._peak
@@ -438,7 +435,7 @@ class VolcanoDefense(GameMode):
 
     def _finish(self) -> None:
         if self._village_damage < self._damage_threshold:
-            self._result_text = f"Village survived the full eruption!"
+            self._result_text = "Village survived the full eruption!"
             self._star_rating = 3
         super()._finish()
 
@@ -504,8 +501,8 @@ class WatershedPuzzle(GameMode):
             surface.blit(overlay, (0, 0))
 
         h, w = max(1, self._water.shape[0]), max(1, self._water.shape[1])
-        sx_fn = lambda c: int(c * sw / w)
-        sy_fn = lambda r: int(r * sh / h)
+        def sx_fn(c): return int(c * sw / w)
+        def sy_fn(r): return int(r * sh / h)
 
         # source marker (blue)
         sy, sxp = self._source

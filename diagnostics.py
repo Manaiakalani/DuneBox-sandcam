@@ -8,7 +8,6 @@ mode that waits for a keypress.
 
 from __future__ import annotations
 
-import os
 import sys
 from dataclasses import dataclass, field
 
@@ -50,11 +49,10 @@ class DiagnosticReport:
 def _check_kinect() -> DiagnosticItem:
     """Try to import freenect ctypes wrapper and detect a device."""
     try:
-        from depth_source import KinectV1Source
-        # Try to open — constructor probes hardware
-        src = KinectV1Source.__new__(KinectV1Source)
+        from depth_source import KinectV1Source  # noqa: F401  (import probes availability)
         # Check if the low-level library is loadable
-        import ctypes, pathlib
+        import ctypes
+        import pathlib
         dll_path = pathlib.Path(__file__).with_name("freenect.dll")
         so_names = ["libfreenect.so", "libfreenect.dylib"]
         lib = None

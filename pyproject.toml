@@ -18,3 +18,22 @@ orbbec = ["pyorbbecsdk>=1.0"]
 realsense = ["pyrealsense2>=2.50"]
 azure = ["pyk4a>=1.5"]
 all-sensors = ["pylibfreenect2>=0.1", "pyorbbecsdk>=1.0", "pyrealsense2>=2.50", "pyk4a>=1.5"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# sandcam runs as a flat collection of scripts (entry: `python main.py`),
+# not an importable package — so disable package auto-discovery. Installing
+# the project (`pip install -e .`) then just resolves the dependencies above.
+py-modules = []
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+# Asset-generation dev scripts keep scratch locals for readability/tuning.
+"generate_placeholder_sounds.py" = ["F841"]
+"generate_terrains.py" = ["F841"]

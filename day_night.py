@@ -190,7 +190,6 @@ class DayNightCycle:
         """Draw stars, moon, and sun on the given surface."""
         w, h = surface.get_size()
         t = self.get_time_of_day()
-        phase = self.get_phase()
 
         # Ambient colour overlay
         ar, ag, ab, aa = self.get_ambient_color()

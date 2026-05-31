@@ -7,7 +7,6 @@ shockwave animation, dinosaur stampede, and volcanic eruptions.
 
 from __future__ import annotations
 
-import math
 import random
 import time
 

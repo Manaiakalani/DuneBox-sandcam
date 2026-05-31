@@ -5,4 +5,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 .venv/
+.ci-test/
+*-venv/
 sandcam-settings.json
+*.egg-info/

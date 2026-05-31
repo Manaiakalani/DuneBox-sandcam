@@ -12,7 +12,6 @@ Each terrain is a (240, 320) float32 array normalised to 0–1.
 from __future__ import annotations
 
 import pathlib
-import sys
 
 import numpy as np
 

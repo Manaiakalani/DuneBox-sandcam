@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    env:
+      # pygame/cv2 need a video + audio driver; use headless dummies in CI
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Create environment and install core deps
+        # Install only the base dependencies (no optional sensor extras, which
+        # require native SDKs and won't build in CI).
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e .
+          uv pip install ruff
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Import smoke test
+        run: |
+          uv run python - <<'PY'
+          import importlib, sys
+          mods = [
+              "bridge", "creatures", "day_night", "dem_loader", "depth_server",
+              "depth_source", "diagnostics", "earthquake", "ecosystem",
+              "game_modes", "interaction_engine", "renderer", "sensor_api",
+              "sounds", "ui", "volcano", "webcam_observer", "ai_guide",
+          ]
+          failed = []
+          for m in mods:
+              try:
+                  importlib.import_module(m)
+              except Exception as exc:  # noqa: BLE001
+                  failed.append(f"{m}: {type(exc).__name__}: {exc}")
+          if failed:
+              print("Import failures:")
+              for f in failed:
+                  print("  " + f)
+              sys.exit(1)
+          print(f"All {len(mods)} modules imported cleanly.")
+          PY
+
+      - name: Unit tests
+        run: uv run python -m unittest test_ai_guide test_vision -v
