@@ -38,11 +38,11 @@ jobs:
           uv pip install ruff
 
       - name: Lint (ruff)
-        run: uv run ruff check .
+        run: uv run --no-sync ruff check .
 
       - name: Import smoke test
         run: |
-          uv run python - <<'PY'
+          uv run --no-sync python - <<'PY'
           import importlib, sys
           mods = [
               "bridge", "creatures", "day_night", "dem_loader", "depth_server",
@@ -65,4 +65,4 @@ jobs:
           PY
 
       - name: Unit tests
-        run: uv run python -m unittest test_ai_guide test_vision test_bridge -v
+        run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge -v
