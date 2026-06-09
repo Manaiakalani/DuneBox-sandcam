@@ -64,8 +64,21 @@ def run(frames: int = 30) -> int:
         day_night.update(dt)
         now += dt
 
+    # Guard against silent "blank render" regressions: with the dummy SDL driver
+    # every blit succeeds as a no-op, so "no exception" alone is not enough. Assert
+    # the renderer actually produced a non-uniform image on the target surface.
+    pixels = pygame.surfarray.array3d(surface)
+    spread = int(pixels.max()) - int(pixels.min())
+    if spread < 5:
+        print(
+            f"rendered surface is effectively blank (value spread={spread}); "
+            "rendering may have silently failed",
+            file=sys.stderr,
+        )
+        return 1
+
     pygame.quit()
-    print(f"Headless smoke OK: {frames} frames rendered cleanly.")
+    print(f"Headless smoke OK: {frames} frames rendered, surface spread={spread}.")
     return 0
 
 
