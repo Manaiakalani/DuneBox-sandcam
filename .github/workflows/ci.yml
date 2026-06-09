@@ -64,5 +64,8 @@ jobs:
           print(f"All {len(mods)} modules imported cleanly.")
           PY
 
+      - name: Launch smoke test
+        run: uv run --no-sync python smoke_headless.py 30
+
       - name: Unit tests
         run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge -v
