@@ -1072,6 +1072,7 @@ class Triceratops(_PrehistoricBase):
             if dist > 0:
                 self.angle = math.atan2(dy, dx)
                 self.speed = self._SPECIES_SPEED * 1.8
+                self._moving = True
         else:
             self.speed = self._SPECIES_SPEED + random.uniform(-4, 4)
         super().update(frame, dt)
@@ -1324,6 +1325,7 @@ class CreatureManager:
                     c.pos[0] + (dx / norm) * flee_dist,
                     c.pos[1] + (dy / norm) * flee_dist,
                 ], dtype=np.float64)
+                c._moving = True
 
     def _trigger_extinction(self) -> None:
         """Start extinction event — dinos flee to edges then despawn."""
@@ -1397,6 +1399,7 @@ class CreatureManager:
             pred._chase_target = nearest_prey
             if nearest_dist > 0:
                 pred._target = nearest_prey.pos.copy()
+                pred._moving = True
 
             if nearest_dist < _KILL_RANGE:
                 kills.append(nearest_prey)
@@ -1420,6 +1423,7 @@ class CreatureManager:
                                 p.pos[1] + (flee_y / norm) * 120,
                             ], dtype=np.float64)
                             p.speed = p._SPECIES_SPEED * 1.5
+                            p._moving = True
                     break
 
         if kills:
@@ -1465,10 +1469,10 @@ class CreatureManager:
 
     @staticmethod
     def _try_spawn(cls: type[Creature], frame: np.ndarray, w: int, h: int) -> Creature | None:
+        probe = cls(0.0, 0.0)
         for _ in range(120):
             x = random.uniform(0, w)
             y = random.uniform(0, h)
-            creature = cls(x, y)
-            if creature._valid_pos(frame, np.array([x, y])):
-                return creature
+            if probe._valid_xy(frame, x, y):
+                return cls(x, y)
         return None
