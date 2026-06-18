@@ -1375,6 +1375,7 @@ class CreatureManager:
 
         for c in prey:
             c._flee_target = None
+            c._chase_target = None
         for c in predators:
             c._chase_target = None
 

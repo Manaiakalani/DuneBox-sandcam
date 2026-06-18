@@ -46,6 +46,10 @@ class InteractionEngine:
 
         self._effects = [effect for effect in self._effects if now - effect.started_at <= effect.duration]
         if not reactions_enabled:
+            # Still record current states so re-enabling reactions doesn't replay
+            # first-seen/state-change events for objects already visible while paused.
+            for obj in objects:
+                self._last_state_by_marker[obj.marker_id] = self._interaction_state(obj, frame)
             return
 
         for obj in objects:

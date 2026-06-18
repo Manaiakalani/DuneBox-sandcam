@@ -129,10 +129,11 @@ class Renderer:
         if show_contours:
             above_water = self._display >= WATER_LEVEL
             quantized   = (self._display / CONTOUR_INTERVAL).astype(np.int32)
-            contour = (
-                (quantized != np.roll(quantized, 1, axis=0)) |
-                (quantized != np.roll(quantized, 1, axis=1))
-            )
+            # Compare neighbours without wrapping the screen edges (np.roll would
+            # compare the top row with the bottom, drawing false border contours).
+            contour = np.zeros_like(quantized, dtype=bool)
+            contour[1:, :] |= quantized[1:, :] != quantized[:-1, :]
+            contour[:, 1:] |= quantized[:, 1:] != quantized[:, :-1]
             contour &= above_water
             self._rgb[contour] = (self._rgb[contour] * 0.35).astype(np.uint8)
 
