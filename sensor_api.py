@@ -799,6 +799,9 @@ class KinectV2Sensor(DepthSensor):
 
         # Clamp to configured range and normalise to 0.0–1.0
         # Invert: close = high terrain, far = low terrain
+        # 0 / non-finite = "no data" -> treat as far (lowest terrain) so sensor
+        # holes don't render as spurious peaks.
+        depth[~np.isfinite(depth) | (depth <= 0)] = self._max
         depth = np.clip(depth, self._min, self._max)
         normalised = 1.0 - (depth - self._min) / (self._max - self._min)
         normalised = normalised.astype(np.float32)
@@ -1071,6 +1074,8 @@ class OrbbecSensor(DepthSensor):
         ).reshape(depth_frame.get_height(), depth_frame.get_width())
         depth = depth.astype(np.float32)
 
+        # 0 = "no data" -> treat as far so sensor holes aren't rendered as peaks.
+        depth[depth <= 0] = self._max
         depth = np.clip(depth, self._min, self._max)
         normalised = 1.0 - (depth - self._min) / (self._max - self._min)
         normalised = normalised.astype(np.float32)
@@ -1091,6 +1096,8 @@ class OrbbecSensor(DepthSensor):
             return None
 
         depth = capture.depth.astype(np.float32)  # (H, W) in mm
+        # 0 = "no data" -> treat as far so sensor holes aren't rendered as peaks.
+        depth[depth <= 0] = self._max
         depth = np.clip(depth, self._min, self._max)
         normalised = 1.0 - (depth - self._min) / (self._max - self._min)
         normalised = normalised.astype(np.float32)
@@ -1297,6 +1304,9 @@ class RealSenseSensor(DepthSensor):
             * self._depth_scale
         )  # now in mm
 
+        # 0 / non-finite = "no data" -> treat as far so sensor holes aren't
+        # rendered as spurious peaks.
+        depth[~np.isfinite(depth) | (depth <= 0)] = self._max
         depth = np.clip(depth, self._min, self._max)
         normalised = 1.0 - (depth - self._min) / (self._max - self._min)
         normalised = normalised.astype(np.float32)

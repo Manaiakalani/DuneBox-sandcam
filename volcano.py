@@ -16,6 +16,21 @@ import pygame
 
 from renderer import WATER_LEVEL
 
+
+def _shift(a: np.ndarray, dy: int, dx: int, mode: str) -> np.ndarray:
+    """Shift ``a`` so result[i, j] == a[i - dy, j - dx] without wrap-around.
+
+    ``mode="edge"`` replicates the border (used for neighbour sampling so the
+    height difference across a boundary is zero -> no flow off the grid).
+    ``mode="constant"`` fills with zeros (used when redistributing flow so lava
+    leaving the grid is dropped rather than teleported to the opposite edge).
+    """
+    ady, adx = abs(dy), abs(dx)
+    ap = np.pad(a, ((ady, ady), (adx, adx)), mode=mode)
+    h, w = a.shape
+    return ap[ady - dy: ady - dy + h, adx - dx: adx - dx + w]
+
+
 # ── Eruption states ───────────────────────────────────────────────────────────
 
 class EruptionState(Enum):
@@ -325,12 +340,16 @@ class VolcanoManager:
         for _ in range(_LAVA_SIM_STEPS):
             surface = terrain + lava
             for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-                neighbour = np.roll(surface, (dy, dx), axis=(0, 1))
+                # Edge-clamp the neighbour so boundary cells see themselves
+                # (diff == 0) and never flow lava off the edge of the grid.
+                neighbour = _shift(surface, dy, dx, "edge")
                 diff = surface - neighbour
                 # Viscosity: flow is slower than water
                 flow = np.clip(diff * _LAVA_FLOW_RATE, 0.0, lava)
                 lava -= flow
-                lava += np.roll(flow, (-dy, -dx), axis=(0, 1))
+                # Zero-fill so flow that would leave the grid is dropped rather
+                # than wrapping around to the opposite side.
+                lava += _shift(flow, -dy, -dx, "constant")
                 surface = terrain + lava
 
         lava *= _LAVA_EVAPORATION

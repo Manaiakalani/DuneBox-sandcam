@@ -1,5 +1,5 @@
 @echo off
-:: DuneBox-sandcam Launcher — installs Python + deps if needed, then runs
+:: DuneBox-sandcam Launcher - installs Python + deps if needed, then runs
 setlocal enabledelayedexpansion
 
 title DuneBox sandcam
@@ -24,13 +24,13 @@ if %errorlevel% neq 0 (
 
 :: Install dependencies + run
 echo  Starting DuneBox sandcam...
-echo  (No Kinect? No problem — mouse simulator mode activates automatically)
+echo  (No Kinect? No problem - mouse simulator mode activates automatically)
 echo.
 :: --frozen: use the committed lock (the sensor extras can't be re-resolved
 ::   without native SDKs). --with websockets: the lock predates the websockets
 ::   dependency, so overlay it explicitly. --with pykinect2/comtypes: the
 ::   Kinect v2 (SDK) backend needs these pure-Python bindings; they aren't in
-::   the lock, so overlay them too (harmless when the sensor isn't used — the
+::   the lock, so overlay them too (harmless when the sensor isn't used - the
 ::   app imports them only when sensor_type=kinect_v2_sdk and falls back
 ::   gracefully if the Kinect for Windows SDK / Kinect20.dll is absent).
 ::   Together these make launch reliable even on a freshly-synced venv.

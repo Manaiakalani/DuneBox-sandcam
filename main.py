@@ -892,11 +892,11 @@ def main() -> int:
             # ── bridge: send detected markers, handle incoming ────────────
             if bridge_enabled and app_bridge.is_connected():
                 for obj in vision_objects:
-                    if hasattr(obj, "marker_id") and hasattr(obj, "position"):
+                    if hasattr(obj, "marker_id") and hasattr(obj, "sandbox_pos"):
                         app_bridge.send({
                             "type": "marker_detected",
                             "marker_id": obj.marker_id,
-                            "position": list(obj.position),
+                            "position": list(obj.sandbox_pos),
                             "timestamp": time.time(),
                         })
                 # Notify C++ app of volcano eruptions
