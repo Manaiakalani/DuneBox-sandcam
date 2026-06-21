@@ -12,12 +12,10 @@ V           cycle creature set (modern / prehistoric / all / none)
 O           toggle volcano placement mode (click to place & erupt)
 K           trigger earthquake at centre (testing)
 S           toggle sound mute
-D           toggle DEM terrain overlay
 N           toggle day/night cycle
 E           toggle ecosystem simulation
 +/-         speed up / slow down day/night cycle
 P           pause / resume day/night cycle
-[ / ]       cycle built-in terrains
 F5          save current terrain snapshot
 R           reset terrain (simulator only)
 B           toggle DuneBox bridge (TCP link to C++ app)

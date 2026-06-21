@@ -264,10 +264,6 @@
           <div class="stat-value" id="s-sensor-status">—</div>
         </div>
         <div class="stat">
-          <div class="stat-label">DEM Terrain</div>
-          <div class="stat-value" id="s-dem">—</div>
-        </div>
-        <div class="stat">
           <div class="stat-label">Clients</div>
           <div class="stat-value" id="s-clients">—</div>
         </div>
@@ -320,17 +316,6 @@
           <button class="btn btn-primary" data-game="watershed">F3 Water</button>
           <button class="btn btn-warn"    data-game="biome">F4 Biome</button>
         </div>
-      </div>
-
-      <div class="ctrl-row">
-        <span class="ctrl-label">DEM</span>
-        <select id="c-dem">
-          <option value="canyon">Canyon</option>
-          <option value="volcano">Volcano</option>
-          <option value="valley">Valley</option>
-          <option value="islands">Islands</option>
-          <option value="flat">Flat</option>
-        </select>
       </div>
     </div>
   </div>
@@ -488,13 +473,6 @@
         : '<span class="badge badge-red">ERR</span>';
     }
 
-    // DEM
-    if (s.dem) {
-      const d = s.dem;
-      el('s-dem').textContent = d.overlay ? d.terrain : 'off';
-      if (d.terrain) el('c-dem').value = d.terrain;
-    }
-
     // Clients
     if (s.clients != null) el('s-clients').textContent = s.clients;
 
@@ -583,7 +561,6 @@
   el('c-daynight').addEventListener('click', () => sendCmd('toggle_day_night'));
   el('c-speed-down').addEventListener('click', () => sendCmd('cycle_speed', 'down'));
   el('c-speed-up').addEventListener('click',   () => sendCmd('cycle_speed', 'up'));
-  el('c-dem').addEventListener('change', e => sendCmd('set_dem', e.target.value));
 
   document.querySelectorAll('[data-game]').forEach(btn => {
     btn.addEventListener('click', () => sendCmd('start_game', btn.dataset.game));
