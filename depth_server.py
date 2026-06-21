@@ -59,12 +59,22 @@ class DepthStreamServer:
         # Let the _serve() while-loop exit naturally when it sees _running=False,
         # which then closes the server gracefully. Calling loop.stop() here would
         # abort run_until_complete() and skip server.close()/wait_closed().
-        if self._thread is not None:
-            self._thread.join(timeout=3.0)
-            self._thread = None
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=3.0)
+            if thread.is_alive():
+                # Thread still running (slow client cleanup); leave attributes intact
+                # so _run()'s finally block can still reference them safely.
+                log.warning(
+                    "DepthStreamServer: background thread did not exit within timeout; "
+                    "cleanup deferred to thread"
+                )
+            else:
+                # Thread exited cleanly; safe to clear references now
+                self._thread = None
+                self._loop = None
         with self._lock:
             self._clients.clear()
-        self._loop = None
         log.info("DepthStreamServer stopped")
 
     def push_frame(self, height_data: np.ndarray) -> None:
@@ -141,20 +151,25 @@ class DepthStreamServer:
             self._running = False
             return
 
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        asyncio.set_event_loop(loop)
 
         try:
-            self._loop.run_until_complete(self._serve())
+            loop.run_until_complete(self._serve())
         except Exception:
             log.exception("DepthStreamServer thread error")
         finally:
+            # Use local 'loop' for cleanup so we don't depend on self._loop
+            # which may have been set to None by stop() if join timed out.
             try:
-                self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+                loop.run_until_complete(loop.shutdown_asyncgens())
             except Exception:
                 pass
-            self._loop.close()
+            loop.close()
+            # Clear instance refs; safe now since thread is exiting
             self._loop = None
+            self._thread = None
             self._running = False
 
     async def _serve(self) -> None:
