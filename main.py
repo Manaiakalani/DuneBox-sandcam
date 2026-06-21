@@ -48,11 +48,7 @@ from day_night import DayNightCycle
 from ecosystem import EcosystemManager
 # from depth_source import MouseSimulator
 from sensor_api import create_sensor
-from dem_loader import (
-    BUILTIN_TERRAINS,
-    load_builtin_terrain,
-    save_terrain_snapshot,
-)
+from dem_loader import save_terrain_snapshot
 from interaction_engine import InteractionEngine
 from renderer import Renderer
 from game_modes import GameManager
@@ -397,21 +393,9 @@ def main() -> int:
 
     brush_radius = BRUSH_DEFAULT
 
-    # ── DEM overlay state ─────────────────────────────────────────────
-    # TODO: dem_terrain is loaded but never passed to renderer.draw() or blended
-    # with the depth frame. The DEM overlay feature is incomplete. To finish it,
-    # blend dem_terrain with frame using config.dem_blend_factor before rendering.
-    dem_terrain: np.ndarray | None = None
-    dem_terrain_idx = max(0, BUILTIN_TERRAINS.index(config.dem_current_terrain)) if config.dem_current_terrain in BUILTIN_TERRAINS else 0
-    dem_flash_timer = 0.0  # seconds remaining to show terrain name on screen
-    dem_flash_text = ""
-    if config.dem_overlay_enabled:
-        try:
-            dem_terrain = load_builtin_terrain(
-                BUILTIN_TERRAINS[dem_terrain_idx], target_shape=(render_h, render_w)
-            )
-        except Exception:
-            dem_terrain = None
+    # Status flash overlay (shows brief messages like "Ecosystem ON", calibration results, etc.)
+    status_flash_timer = 0.0  # seconds remaining to show message
+    status_flash_text = ""
 
     try:
         running = True
@@ -456,64 +440,19 @@ def main() -> int:
                         config.request_save()
                     elif event.key == pygame.K_v:
                         new_set = creatures.cycle_creature_set()
-                        dem_flash_text = f"Creatures: {new_set}"
-                        dem_flash_timer = 1.5
+                        status_flash_text = f"Creatures: {new_set}"
+                        status_flash_timer = 1.5
                     elif event.key == pygame.K_s:
                         muted = sound_mgr.toggle_mute()
                         config.sound_enabled = not muted
                         config.request_save()
-                    elif event.key == pygame.K_d:
-                        config.dem_overlay_enabled = not config.dem_overlay_enabled
-                        if config.dem_overlay_enabled and dem_terrain is None:
-                            try:
-                                name = BUILTIN_TERRAINS[dem_terrain_idx]
-                                dem_terrain = load_builtin_terrain(
-                                    name, target_shape=(render_h, render_w)
-                                )
-                                config.dem_current_terrain = name
-                            except Exception:
-                                dem_terrain = None
-                        dem_flash_text = (
-                            f"DEM: {BUILTIN_TERRAINS[dem_terrain_idx]}"
-                            if config.dem_overlay_enabled else "DEM off"
-                        )
-                        dem_flash_timer = 2.0
-                        config.request_save()
-                    elif event.key == pygame.K_LEFTBRACKET:
-                        dem_terrain_idx = (dem_terrain_idx - 1) % len(BUILTIN_TERRAINS)
-                        name = BUILTIN_TERRAINS[dem_terrain_idx]
-                        try:
-                            dem_terrain = load_builtin_terrain(
-                                name, target_shape=(render_h, render_w)
-                            )
-                        except Exception:
-                            dem_terrain = None
-                        config.dem_current_terrain = name
-                        config.dem_overlay_enabled = True
-                        dem_flash_text = f"DEM: {name}"
-                        dem_flash_timer = 2.0
-                        config.request_save()
-                    elif event.key == pygame.K_RIGHTBRACKET:
-                        dem_terrain_idx = (dem_terrain_idx + 1) % len(BUILTIN_TERRAINS)
-                        name = BUILTIN_TERRAINS[dem_terrain_idx]
-                        try:
-                            dem_terrain = load_builtin_terrain(
-                                name, target_shape=(render_h, render_w)
-                            )
-                        except Exception:
-                            dem_terrain = None
-                        config.dem_current_terrain = name
-                        config.dem_overlay_enabled = True
-                        dem_flash_text = f"DEM: {name}"
-                        dem_flash_timer = 2.0
-                        config.request_save()
                     elif event.key == pygame.K_F5:
                         try:
                             saved = save_terrain_snapshot(source.get_frame())
-                            dem_flash_text = f"Saved: {saved.name}"
+                            status_flash_text = f"Saved: {saved.name}"
                         except Exception as exc:
-                            dem_flash_text = f"Save failed: {exc}"
-                        dem_flash_timer = 2.5
+                            status_flash_text = f"Save failed: {exc}"
+                        status_flash_timer = 2.5
                     elif event.key == pygame.K_b:
                         bridge_enabled = not bridge_enabled
                         if bridge_enabled:
@@ -527,8 +466,8 @@ def main() -> int:
                     elif event.key == pygame.K_e:
                         eco_enabled = not eco_enabled
                         eco_mgr.set_enabled(eco_enabled)
-                        dem_flash_text = f"Ecosystem {'ON' if eco_enabled else 'OFF'}"
-                        dem_flash_timer = 2.0
+                        status_flash_text = f"Ecosystem {'ON' if eco_enabled else 'OFF'}"
+                        status_flash_timer = 2.0
                     elif event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
                         day_night.set_speed(day_night._speed + 0.5)
                     elif event.key == pygame.K_MINUS:
@@ -545,15 +484,15 @@ def main() -> int:
                         config.request_save()
                     elif event.key == pygame.K_o:
                         volcano_place_mode = not volcano_place_mode
-                        dem_flash_text = (
+                        status_flash_text = (
                             "Volcano placement ON (click to place)"
                             if volcano_place_mode else "Volcano placement OFF"
                         )
-                        dem_flash_timer = 2.0
+                        status_flash_timer = 2.0
                     elif event.key == pygame.K_k:
                         earthquake_det.force_trigger(render_w // 2, render_h // 2)
-                        dem_flash_text = "Earthquake triggered!"
-                        dem_flash_timer = 2.0
+                        status_flash_text = "Earthquake triggered!"
+                        status_flash_timer = 2.0
                     elif event.key == pygame.K_a:
                         if hasattr(source, "auto_calibrate_flat_surface"):
                             result = source.auto_calibrate_flat_surface()
@@ -561,14 +500,14 @@ def main() -> int:
                                 config.min_depth_mm, config.max_depth_mm = result
                                 config.depth_range_changed = True
                                 config.request_save()
-                                dem_flash_text = (
+                                status_flash_text = (
                                     f"Depth calibrated: {result[0]}-{result[1]} mm"
                                 )
                             else:
-                                dem_flash_text = "Calibration failed: no valid depth"
+                                status_flash_text = "Calibration failed: no valid depth"
                         else:
-                            dem_flash_text = "Auto-calibration not supported"
-                        dem_flash_timer = 2.5
+                            status_flash_text = "Auto-calibration not supported"
+                        status_flash_timer = 2.5
                 elif event.type == pygame.MOUSEBUTTONDOWN and volcano_place_mode:
                     if event.button == 1:
                         vx, vy = _screen_to_scene(
@@ -579,8 +518,8 @@ def main() -> int:
                         idx = volcano_mgr.place_volcano(vx, vy)
                         volcano_mgr.trigger_eruption(idx)
                         volcano_place_mode = False
-                        dem_flash_text = f"Volcano placed at ({vx}, {vy})"
-                        dem_flash_timer = 2.0
+                        status_flash_text = f"Volcano placed at ({vx}, {vy})"
+                        status_flash_timer = 2.0
                 elif event.type == pygame.MOUSEWHEEL:
                     brush_radius = max(BRUSH_MIN, min(BRUSH_MAX,
                                                       brush_radius + event.y * 4))
@@ -956,10 +895,6 @@ def main() -> int:
                         "type": source.get_sensor_name(),
                         "connected": True,
                     },
-                    "dem": {
-                        "overlay": config.dem_overlay_enabled,
-                        "terrain": config.dem_current_terrain,
-                    },
                     "clients": depth_server.get_client_count(),
                     "uptime": round(time.monotonic() - app_start_time, 1),
                 })
@@ -993,20 +928,6 @@ def main() -> int:
                     elif action == "start_game":
                         if value in GameManager.get_available_modes():
                             game_mgr.start_game(value, source.get_frame())
-                    elif action == "set_dem":
-                        if value in BUILTIN_TERRAINS:
-                            dem_terrain_idx = BUILTIN_TERRAINS.index(value)
-                            try:
-                                dem_terrain = load_builtin_terrain(
-                                    value, target_shape=(render_h, render_w)
-                                )
-                            except Exception:
-                                dem_terrain = None
-                            config.dem_current_terrain = value
-                            config.dem_overlay_enabled = True
-                            dem_flash_text = f"DEM: {value}"
-                            dem_flash_timer = 2.0
-                            config.request_save()
 
             guide_message = None
             active_challenge = None
@@ -1065,10 +986,10 @@ def main() -> int:
             pygame.draw.circle(screen, (255, 255, 255), (mx, my), brush_radius, 1)
 
             # ── DEM flash notification ────────────────────────────────────
-            if dem_flash_timer > 0:
-                dem_flash_timer -= dt
-                flash_alpha = min(255, int(255 * min(1.0, dem_flash_timer / 0.3)))
-                flash_surf = hud_font.render(dem_flash_text, True, (255, 230, 90))
+            if status_flash_timer > 0:
+                status_flash_timer -= dt
+                flash_alpha = min(255, int(255 * min(1.0, status_flash_timer / 0.3)))
+                flash_surf = hud_font.render(status_flash_text, True, (255, 230, 90))
                 flash_surf.set_alpha(flash_alpha)
                 screen.blit(
                     flash_surf,
@@ -1079,7 +1000,6 @@ def main() -> int:
             creature_set_label = creatures.creature_set
             sound_state = "off" if not config.sound_enabled else "on"
             ai_state = "ai:on" if config.ai_enabled else "ai:off"
-            dem_state = f"dem:{config.dem_current_terrain}" if config.dem_overlay_enabled else "dem:off"
             dn_state = f"cycle:{day_night.get_phase()}" if day_night_enabled else "cycle:off"
             bridge_state = (
                 "bridge:connected" if (bridge_enabled and app_bridge.is_connected())
@@ -1097,7 +1017,7 @@ def main() -> int:
             eco_state = "eco:on" if eco_enabled else "eco:off"
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  V set:{creature_set_label}  "
                    f"E {eco_state}  O volcano:{volcano_state}  "
-                   f"S sound:{sound_state}  N {dn_state}  B {bridge_state}  U {depth_state}  D {dem_state}  R reset  "
+                   f"S sound:{sound_state}  N {dn_state}  B {bridge_state}  U {depth_state}  R reset  "
                    f"brush {brush_radius}px  |  {config.colour_scheme}  {ai_state}{game_hud}")
             label = hud_font.render(hud, True, (200, 200, 200))
             screen.blit(label, (10, screen.get_height() - 24))
@@ -1130,44 +1050,46 @@ def main() -> int:
         try:
             config.save()
         except Exception:
-            pass
+            logger.exception("Failed to save config during shutdown")
         try:
             if guide is not None:
                 guide.close()
         except Exception:
-            pass
+            logger.exception("Failed to close AI guide during shutdown")
         try:
             camera_discovery.close()
         except Exception:
-            pass
+            logger.exception("Failed to close camera discovery during shutdown")
         try:
             camera_tester.close()
         except Exception:
-            pass
+            logger.exception("Failed to close camera tester during shutdown")
         try:
             if vision is not None:
                 vision.close()
         except Exception:
-            pass
+            logger.exception("Failed to close vision system during shutdown")
         try:
             sound_mgr.cleanup()
         except Exception:
-            pass
+            logger.exception("Failed to cleanup sound manager during shutdown")
         try:
             llm_tester.close()
         except Exception:
-            pass
+            logger.exception("Failed to close LLM tester during shutdown")
         try:
             app_bridge.stop()
         except Exception:
-            pass
+            logger.exception("Failed to stop app bridge during shutdown")
         try:
             depth_server.stop()
         except Exception:
-            pass
+            logger.exception("Failed to stop depth server during shutdown")
         try:
             if hasattr(source, "close"):
                 source.close()
+        except Exception:
+            logger.exception("Failed to close depth source during shutdown")
         finally:
             pygame.quit()
 

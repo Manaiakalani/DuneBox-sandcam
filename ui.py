@@ -98,9 +98,6 @@ class Config:
     vision_calibration_points: list[list[float]] | None = None
     sound_enabled: bool = True
     sound_master_volume: float = 0.7
-    dem_overlay_enabled: bool = False
-    dem_current_terrain: str = "canyon"
-    dem_blend_factor: float = 0.5
     depth_server_enabled: bool = False
     depth_server_port: int = 8765
     depth_server_max_fps: int = 10
@@ -199,7 +196,6 @@ class Config:
         if not config.vision_calibration_points or len(config.vision_calibration_points) != 4:
             config.vision_calibration_points = []
         config.sound_master_volume = max(0.0, min(1.0, float(config.sound_master_volume)))
-        config.dem_blend_factor = max(0.0, min(1.0, float(config.dem_blend_factor)))
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         return config
@@ -240,9 +236,6 @@ class Config:
             "sensor_fallback": self.sensor_fallback,
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
-            "dem_overlay_enabled": self.dem_overlay_enabled,
-            "dem_current_terrain": self.dem_current_terrain,
-            "dem_blend_factor": self.dem_blend_factor,
             "depth_server_enabled": self.depth_server_enabled,
             "depth_server_port": self.depth_server_port,
             "depth_server_max_fps": self.depth_server_max_fps,

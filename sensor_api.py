@@ -1737,7 +1737,7 @@ class KinectV2SdkSensor(DepthSensor):
 
     def auto_calibrate_flat_surface(
         self,
-        samples: int = 30,
+        samples: int = 30,  # unused; kept for API compatibility
         roi_frac: float = 0.5,
         build_height_mm: int = 250,
         dig_depth_mm: int = 120,
@@ -1753,25 +1753,23 @@ class KinectV2SdkSensor(DepthSensor):
         """
         if not self._connected or self._kinect is None:
             return None
-        import time as _time
 
         h, w = self._NATIVE_H, self._NATIVE_W
         y0, y1 = int(h * (1 - roi_frac) / 2), int(h * (1 + roi_frac) / 2)
         x0, x1 = int(w * (1 - roi_frac) / 2), int(w * (1 + roi_frac) / 2)
-        medians: list[float] = []
-        deadline = _time.time() + 5.0
-        while len(medians) < samples and _time.time() < deadline:
-            if not self._kinect.has_new_depth_frame():
-                _time.sleep(0.01)
-                continue
-            raw = self._kinect.get_last_depth_frame()
-            frame = np.asarray(raw, dtype=np.float32).reshape(h, w)[y0:y1, x0:x1]
-            valid = frame[frame > 0]
-            if valid.size:
-                medians.append(float(np.median(valid)))
-        if not medians:
+
+        # Single snapshot — spatial median over the large ROI is stable enough;
+        # the previous temporal loop (collecting 30 frames) was redundant and
+        # could block the UI thread for up to 5 seconds.
+        if not self._kinect.has_new_depth_frame():
             return None
-        plane = float(np.median(medians))
+        raw = self._kinect.get_last_depth_frame()
+        frame = np.asarray(raw, dtype=np.float32).reshape(h, w)[y0:y1, x0:x1]
+        valid = frame[frame > 0]
+        if not valid.size:
+            return None
+
+        plane = float(np.median(valid))
         min_mm = int(max(500, plane - build_height_mm))
         max_mm = int(min(4500, plane + dig_depth_mm))
         if max_mm <= min_mm:
