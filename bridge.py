@@ -164,7 +164,7 @@ class AppBridge:
                 try:
                     msg = self._send_q.get_nowait()
                     line = json.dumps(msg, separators=(",", ":")) + "\n"
-                    sock.sendall(line.encode("utf-8"))
+                    self._send_all(sock, line.encode("utf-8"))
                 except (BrokenPipeError, ConnectionResetError, OSError):
                     self._connected_event.clear()
                     return
@@ -207,7 +207,26 @@ class AppBridge:
                 self._connected_event.clear()
                 return
 
-    # ── cleanup ───────────────────────────────────────────────────────
+    def _send_all(self, sock: socket.socket, data: bytes) -> None:
+        """Send all bytes on a non-blocking socket, tolerating transient
+        back-pressure (BlockingIOError) instead of dropping the connection.
+
+        On a non-blocking socket a full send buffer raises BlockingIOError
+        (a subclass of OSError); the messages here are tiny and infrequent, so
+        we wait briefly for writability and retry rather than tearing down the
+        link. A real error (BrokenPipe/ConnectionReset) still propagates, and a
+        persistently un-writable socket times out and raises OSError so the
+        caller reconnects."""
+        view = memoryview(data)
+        sent_total = 0
+        deadline = time.monotonic() + 5.0
+        while sent_total < len(data):
+            try:
+                sent_total += sock.send(view[sent_total:])
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    raise OSError("Bridge: send timed out (socket not writable)")
+                select.select([], [sock], [], 1.0)
 
     def _close_conn(self) -> None:
         if self._conn_sock is not None:

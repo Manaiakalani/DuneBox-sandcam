@@ -1540,7 +1540,7 @@ def _import_pykinect2():
         import importlib
 
         importlib.invalidate_caches()
-        for mod in [m for m in sys.modules if m.startswith("pykinect2")]:
+        for mod in [m for m in list(sys.modules.keys()) if m.startswith("pykinect2")]:
             del sys.modules[mod]
         try:
             return _do_import()
@@ -1592,7 +1592,9 @@ class KinectV2SdkSensor(DepthSensor):
         self._out_width = int(width)
         self._out_height = int(height)
         self._min = float(min_depth_mm)
-        self._max = float(max_depth_mm)
+        # Guard against an inverted/degenerate range from corrupt settings; a
+        # zero or negative span would divide-by-zero in get_depth_frame().
+        self._max = float(max(int(max_depth_mm), int(min_depth_mm) + 50))
         self._alpha = float(temporal_alpha)
         self._connected = False
 
@@ -1682,12 +1684,17 @@ class KinectV2SdkSensor(DepthSensor):
         )
         # The sensor image is mirrored; flip X so sculpting feels natural.
         depth = np.fliplr(depth)
+        # Snapshot the depth range under the lock so a concurrent
+        # set_depth_range() can't produce a torn min/max read mid-frame.
+        with self._lock:
+            min_d = self._min
+            max_d = self._max
         # 0 = "no data" -> treat as far (lowest terrain).
-        depth[depth == 0] = self._max
+        depth[depth == 0] = max_d
 
-        depth = np.clip(depth, self._min, self._max)
+        depth = np.clip(depth, min_d, max_d)
         # Invert: close = high terrain, far = low terrain.
-        normalised = 1.0 - (depth - self._min) / (self._max - self._min)
+        normalised = 1.0 - (depth - min_d) / (max_d - min_d)
         normalised = normalised.astype(np.float32)
 
         # Temporal EMA smoothing.
@@ -1760,12 +1767,16 @@ class KinectV2SdkSensor(DepthSensor):
         y0, y1 = int(h * (1 - roi_frac) / 2), int(h * (1 + roi_frac) / 2)
         x0, x1 = int(w * (1 - roi_frac) / 2), int(w * (1 + roi_frac) / 2)
 
-        # Single snapshot — spatial median over the large ROI is stable enough;
-        # the previous temporal loop (collecting 30 frames) was redundant and
-        # could block the UI thread for up to 5 seconds.
-        if not self._kinect.has_new_depth_frame():
+        # Use the most recent buffered frame directly. We must NOT gate on
+        # has_new_depth_frame() here: the main render loop's get_depth_frame()
+        # consumes the new-frame flag every tick, so by the time the operator
+        # presses the calibrate key it is almost always already False and the
+        # calibration would spuriously fail. get_last_depth_frame() returns the
+        # latest delivered frame, which is exactly what we want for a snapshot.
+        try:
+            raw = self._kinect.get_last_depth_frame()
+        except Exception:
             return None
-        raw = self._kinect.get_last_depth_frame()
         if raw is None:
             return None
         try:
