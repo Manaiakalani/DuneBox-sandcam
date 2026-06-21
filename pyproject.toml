@@ -13,11 +13,15 @@ dependencies = [
 
 [project.optional-dependencies]
 geo = ["rasterio>=1.3"]
-kinect-v2 = ["pylibfreenect2>=0.1"]
+# kinect_v2_sdk backend (Windows SDK + pykinect2) - builds on Windows without native deps
+kinect-v2 = ["pykinect2>=0.1.0", "comtypes>=1.1"]
 orbbec = ["pyorbbecsdk>=1.0"]
 realsense = ["pyrealsense2>=2.50"]
 azure = ["pyk4a>=1.5"]
-all-sensors = ["pylibfreenect2>=0.1", "pyorbbecsdk>=1.0", "pyrealsense2>=2.50", "pyk4a>=1.5"]
+# all-sensors uses pykinect2 for Kinect V2 (works on Windows)
+# NOTE: For the native pylibfreenect2-based kinect_v2 backend (Linux), install manually:
+#       pip install pylibfreenect2 (requires libfreenect2 native headers)
+all-sensors = ["pykinect2>=0.1.0", "comtypes>=1.1", "pyorbbecsdk>=1.0", "pyrealsense2>=2.50", "pyk4a>=1.5"]
 
 [build-system]
 requires = ["setuptools>=61"]
