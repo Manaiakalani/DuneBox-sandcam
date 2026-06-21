@@ -56,8 +56,9 @@ class DepthStreamServer:
     def stop(self) -> None:
         """Cleanly shut down the server."""
         self._running = False
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        # Let the _serve() while-loop exit naturally when it sees _running=False,
+        # which then closes the server gracefully. Calling loop.stop() here would
+        # abort run_until_complete() and skip server.close()/wait_closed().
         if self._thread is not None:
             self._thread.join(timeout=3.0)
             self._thread = None
@@ -71,6 +72,12 @@ class DepthStreamServer:
         now = time.monotonic()
         if now - self._last_frame_time < self._min_interval:
             return
+
+        # Skip expensive PNG encoding when no clients are connected
+        with self._lock:
+            if not self._clients:
+                return
+
         self._last_frame_time = now
 
         try:
