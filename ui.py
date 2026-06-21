@@ -170,7 +170,7 @@ class Config:
             config.llm_backend = "template"
 
         _VALID_SENSORS = {
-            "kinect_v1", "kinect_v2", "orbbec", "realsense",
+            "kinect_v1", "kinect_v2", "kinect_v2_sdk", "orbbec", "realsense",
             "mouse_simulator", "dummy",
         }
         if config.sensor_type not in _VALID_SENSORS:

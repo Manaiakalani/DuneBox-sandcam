@@ -30,6 +30,7 @@ A lightweight, cross-platform augmented reality sandbox built with Python, pygam
 |---|---|---|---|---|
 | Kinect v1 (Xbox 360) | `kinect_v1` | libfreenect (bundled) | 640×480 | 0.4–4.0 m |
 | Kinect v2 (Xbox One) | `kinect_v2` | pylibfreenect2 | 512×424 | 0.5–4.5 m |
+| Kinect v2 — Windows SDK | `kinect_v2_sdk` | pykinect2 + comtypes (Kinect for Windows SDK 2.0) | 512×424 | 0.5–4.5 m |
 | Orbbec Femto Bolt | `orbbec` | pyorbbecsdk or pyk4a | 640×576 | 0.25–5.5 m |
 | Orbbec Astra | `orbbec` | pyorbbecsdk | 640×480 | 0.6–8.0 m |
 | Intel RealSense D435 | `realsense` | pyrealsense2 | 1280×720 | 0.1–10 m |
@@ -49,9 +50,18 @@ Edit `sandcam-settings.json`:
 ### Installing sensor libraries
 
 ```bash
-# Kinect V2
+# Kinect V2 (cross-platform, libfreenect2)
 pip install pylibfreenect2
 # Also needs libfreenect2: brew install libfreenect2 (macOS) / see docs (Linux/Win)
+
+# Kinect V2 on Windows via the official Microsoft SDK (recommended on Windows)
+pip install pykinect2 comtypes
+# Also install the Kinect for Windows SDK 2.0 (provides the USB driver + Kinect20.dll):
+#   https://www.microsoft.com/en-us/download/details.aspx?id=44561
+# Requires the Kinect Adapter on a true USB 3.0 port. Then set
+#   "sensor_type": "kinect_v2_sdk" in sandcam-settings.json.
+# Once the sensor is mounted top-down over the sandbox, press the "A" key in the
+# app to auto-calibrate the depth range from the flat sand surface.
 
 # Orbbec (native SDK)
 pip install pyorbbecsdk

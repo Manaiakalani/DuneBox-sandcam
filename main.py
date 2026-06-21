@@ -551,6 +551,21 @@ def main() -> int:
                         earthquake_det.force_trigger(render_w // 2, render_h // 2)
                         dem_flash_text = "Earthquake triggered!"
                         dem_flash_timer = 2.0
+                    elif event.key == pygame.K_a:
+                        if hasattr(source, "auto_calibrate_flat_surface"):
+                            result = source.auto_calibrate_flat_surface()
+                            if result:
+                                config.min_depth_mm, config.max_depth_mm = result
+                                config.depth_range_changed = True
+                                config.request_save()
+                                dem_flash_text = (
+                                    f"Depth calibrated: {result[0]}-{result[1]} mm"
+                                )
+                            else:
+                                dem_flash_text = "Calibration failed: no valid depth"
+                        else:
+                            dem_flash_text = "Auto-calibration not supported"
+                        dem_flash_timer = 2.5
                 elif event.type == pygame.MOUSEBUTTONDOWN and volcano_place_mode:
                     if event.button == 1:
                         vx, vy = _screen_to_scene(

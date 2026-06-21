@@ -520,7 +520,7 @@ class MouseSimulatorSensor(DepthSensor):
 
     DEFAULT_LEVEL = 0.45
 
-    def __init__(self, width: int = 640, height: int = 480) -> None:
+    def __init__(self, width: int = 640, height: int = 480, **_kwargs) -> None:
         self.width = width
         self.height = height
         self._map = np.full(
@@ -594,7 +594,7 @@ class MouseSimulatorSensor(DepthSensor):
 class DummySensor(DepthSensor):
     """Generates procedural terrain for testing without any hardware."""
 
-    def __init__(self, width: int = 640, height: int = 480) -> None:
+    def __init__(self, width: int = 640, height: int = 480, **_kwargs) -> None:
         self.width = width
         self.height = height
         self._connected = False
@@ -1359,8 +1359,8 @@ def create_sensor(config: dict, **kwargs) -> DepthSensor:
     Create a depth sensor from a config dict.
 
     Expected keys (all optional):
-        sensor_type     – one of: kinect_v1, kinect_v2, orbbec, realsense,
-                          mouse_simulator, dummy  (default: kinect_v1)
+        sensor_type     – one of: kinect_v1, kinect_v2, kinect_v2_sdk, orbbec,
+                          realsense, mouse_simulator, dummy  (default: kinect_v1)
         sensor_fallback – fallback type if the primary fails to connect
                           (default: mouse_simulator)
 
@@ -1410,3 +1410,375 @@ def _try_create(
     except Exception:
         logger.exception("Failed to create sensor '%s'", sensor_type)
         return None
+
+
+# ── Kinect V2 via the official Kinect for Windows SDK (pykinect2) ───────────────
+#
+# This is a Windows-only backend that talks to the Xbox One / Kinect v2 sensor
+# through Microsoft's "Kinect for Windows SDK 2.0" using the pure-Python
+# `pykinect2` bindings (no native compilation required, unlike `pylibfreenect2`
+# used by the KinectV2Sensor backend above).
+#
+# Requirements (one-time, manual):
+#   1. pip install pykinect2 comtypes      (into this venv)
+#   2. Install the "Kinect for Windows SDK 2.0" *or* the "Kinect for Windows
+#      Runtime 2.0" from Microsoft — this provides the USB driver and
+#      Kinect20.dll.  Download:
+#        https://www.microsoft.com/en-us/download/details.aspx?id=44561  (SDK)
+#        https://www.microsoft.com/en-us/download/details.aspx?id=44559  (Runtime)
+#
+# pykinect2 0.1.0 ships codegen that only works on 32-bit Python and an ancient
+# comtypes; `_patch_pykinect2()` below transparently repairs both issues so the
+# bindings import on modern 64-bit Python 3.x.
+
+
+def _patch_pykinect2() -> bool:
+    """Idempotently fix the two well-known pykinect2 import-time bugs on
+    64-bit / modern-comtypes Python.  Returns True if a file was rewritten."""
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.find_spec("pykinect2")
+    if spec is None or not spec.submodule_search_locations:
+        return False
+    pkg = pathlib.Path(spec.submodule_search_locations[0])
+    pv = pkg / "PyKinectV2.py"
+    if not pv.exists():
+        return False
+    patched = False
+
+    src = pv.read_text(encoding="utf-8", errors="ignore")
+    new = src
+    # (1) 64-bit struct size: tagSTATSTG is 80 bytes on x64, not the hardcoded 72.
+    new = new.replace(
+        "assert sizeof(tagSTATSTG) == 72, sizeof(tagSTATSTG)",
+        "assert sizeof(tagSTATSTG) in (72, 80), sizeof(tagSTATSTG)",
+    )
+    # (2) ancient comtypes version sentinel that modern comtypes rejects.
+    #     Guard against re-wrapping: only patch the bare, unwrapped call.
+    if (
+        "from comtypes import _check_version; _check_version('')" in new
+        and "try:\n    from comtypes import _check_version; _check_version('')"
+        not in new
+    ):
+        new = new.replace(
+            "from comtypes import _check_version; _check_version('')",
+            "try:\n    from comtypes import _check_version; _check_version('')\n"
+            "except Exception:\n    pass  # pykinect2 codegen predates modern comtypes",
+        )
+    if new != src:
+        pv.write_text(new, encoding="utf-8")
+        logger.info("Patched pykinect2 for 64-bit / modern comtypes compatibility")
+        patched = True
+
+    # (3) time.clock() was removed in Python 3.8+ -> use perf_counter.
+    pr = pkg / "PyKinectRuntime.py"
+    if pr.exists():
+        rsrc = pr.read_text(encoding="utf-8", errors="ignore")
+        rnew = rsrc.replace("time.clock(", "time.perf_counter(")
+        if rnew != rsrc:
+            pr.write_text(rnew, encoding="utf-8")
+            logger.info("Patched pykinect2 PyKinectRuntime for Python 3.8+ (time.clock)")
+            patched = True
+
+    return patched
+
+
+def _import_pykinect2():
+    """Import pykinect2, applying compatibility patches and retrying once.
+
+    Raises ImportError if pykinect2/comtypes are missing or if the Kinect for
+    Windows SDK/Runtime (Kinect20.dll) is not installed, so the sensor factory
+    can fall back cleanly.
+    """
+    import importlib.util
+    import sys
+
+    if importlib.util.find_spec("pykinect2") is None:
+        raise ImportError(
+            "Kinect V2 (SDK) support requires the pykinect2 bindings.\n"
+            "Install:  pip install pykinect2 comtypes"
+        )
+
+    # Proactively repair the known pykinect2 incompatibilities (64-bit struct
+    # sizes, ancient comtypes check, and time.clock() removed in Python 3.8+)
+    # before importing.  The time.clock() bug only surfaces at runtime, not at
+    # import, so an on-error-only patch would miss it.
+    _patch_pykinect2()
+
+    def _do_import():
+        from pykinect2 import PyKinectV2, PyKinectRuntime  # noqa: F401
+
+        return PyKinectV2, PyKinectRuntime
+
+    try:
+        return _do_import()
+    except (AssertionError, ImportError) as exc:
+        # Safety net: if a patch didn't take (e.g. file perms), try once more.
+        if isinstance(exc, ImportError) and "pykinect2" in str(exc).lower():
+            raise ImportError(
+                "Kinect V2 (SDK) support requires the pykinect2 bindings.\n"
+                "Install:  pip install pykinect2 comtypes"
+            ) from exc
+        if not _patch_pykinect2():
+            raise ImportError(
+                "Kinect V2 (SDK) support requires the pykinect2 bindings.\n"
+                "Install:  pip install pykinect2 comtypes"
+            ) from exc
+        import importlib
+
+        importlib.invalidate_caches()
+        for mod in [m for m in sys.modules if m.startswith("pykinect2")]:
+            del sys.modules[mod]
+        try:
+            return _do_import()
+        except (OSError, ImportError) as exc2:
+            raise _sdk_missing_error(exc2) from exc2
+    except OSError as exc:
+        # ctypes.WinDLL('Kinect20') failed -> SDK/Runtime not installed.
+        raise _sdk_missing_error(exc) from exc
+
+
+def _sdk_missing_error(cause: Exception) -> ImportError:
+    return ImportError(
+        "Kinect V2 sensor found but the 'Kinect for Windows SDK/Runtime 2.0' "
+        "is not installed (could not load Kinect20.dll).\n"
+        "Install the driver+runtime from Microsoft, then re-launch:\n"
+        "  SDK:     https://www.microsoft.com/en-us/download/details.aspx?id=44561\n"
+        "  Runtime: https://www.microsoft.com/en-us/download/details.aspx?id=44559\n"
+        f"(underlying error: {cause})"
+    )
+
+
+@_register("kinect_v2_sdk")
+class KinectV2SdkSensor(DepthSensor):
+    """
+    Kinect V2 (Xbox One) depth sensor via the official Kinect for Windows SDK
+    using the pure-Python ``pykinect2`` bindings.  Windows-only.
+
+    Native depth: 512×424, range ~500–4500 mm, 0 = no data.
+    """
+
+    _NATIVE_W, _NATIVE_H = 512, 424
+
+    def __init__(
+        self,
+        width: int = 512,
+        height: int = 424,
+        min_depth_mm: int = 500,
+        max_depth_mm: int = 1500,
+        temporal_alpha: float = 0.5,
+        **_kwargs,
+    ) -> None:
+        import sys
+
+        if not sys.platform.startswith("win"):
+            raise NotImplementedError(
+                "kinect_v2_sdk backend is Windows-only "
+                "(requires the Kinect for Windows SDK)."
+            )
+        self._out_width = int(width)
+        self._out_height = int(height)
+        self._min = float(min_depth_mm)
+        self._max = float(max_depth_mm)
+        self._alpha = float(temporal_alpha)
+        self._connected = False
+
+        import threading
+
+        self._lock = threading.Lock()
+        self._pk2 = None
+        self._runtime_mod = None
+        self._kinect = None
+        self._ema: np.ndarray | None = None
+        self._latest_depth: np.ndarray | None = None
+
+    def connect(self) -> bool:
+        if self._connected:
+            return True
+
+        import time
+
+        PyKinectV2, PyKinectRuntime = _import_pykinect2()
+        self._pk2 = PyKinectV2
+        self._runtime_mod = PyKinectRuntime
+
+        self._kinect = PyKinectRuntime.PyKinectRuntime(
+            PyKinectV2.FrameSourceTypes_Depth
+        )
+
+        # Wait for the sensor to start streaming depth frames that actually
+        # contain data.  Frames can arrive all-zero when the sensor lacks a
+        # true USB 3.0 link (depth/IR are uncompressed and need the bandwidth):
+        # the RGB camera still works but depth stays empty.  Treat an all-zero
+        # depth stream as "not usable" so the factory falls back to the
+        # simulator instead of rendering a permanently flat sandbox.
+        deadline = time.time() + 8.0
+        saw_frame = False
+        while time.time() < deadline:
+            if self._kinect.has_new_depth_frame():
+                saw_frame = True
+                raw = self._kinect.get_last_depth_frame()
+                if np.any(np.asarray(raw, dtype=np.uint16) > 0):
+                    self._connected = True
+                    logger.info("Kinect V2 (SDK) connected (512×424 depth)")
+                    return True
+            time.sleep(0.05)
+
+        try:
+            self._kinect.close()
+        except Exception:
+            pass
+        self._kinect = None
+        if saw_frame:
+            raise RuntimeError(
+                "Kinect V2 depth frames are arriving but contain no data "
+                "(all-zero). The RGB camera works, so this is almost always a "
+                "USB link problem: the sensor needs a true USB 3.0 port. "
+                "Plug the Kinect Adapter for Windows into a USB 3.0 port "
+                "(SuperSpeed / blue, marked 'SS' or '3.0') directly on the PC "
+                "— not a front-panel port, hub, or USB 2.0 port. "
+                "Verify with the Kinect V2 Configuration Verifier."
+            )
+        raise RuntimeError(
+            "Kinect V2 (SDK) opened but no depth frames arrived within 8s. "
+            "Check the USB 3.0 connection and the sensor's power adapter."
+        )
+
+    def disconnect(self) -> None:
+        if not self._connected:
+            return
+        self._connected = False
+        try:
+            if self._kinect is not None:
+                self._kinect.close()
+        except Exception:
+            pass
+        self._kinect = None
+        logger.info("Kinect V2 (SDK) disconnected")
+
+    def get_depth_frame(self) -> np.ndarray | None:
+        if not self._connected or self._kinect is None:
+            return None
+        if not self._kinect.has_new_depth_frame():
+            with self._lock:
+                return self._latest_depth
+
+        raw = self._kinect.get_last_depth_frame()  # 1D uint16, len 512*424, mm
+        depth = np.asarray(raw, dtype=np.float32).reshape(
+            self._NATIVE_H, self._NATIVE_W
+        )
+        # The sensor image is mirrored; flip X so sculpting feels natural.
+        depth = np.fliplr(depth)
+        # 0 = "no data" -> treat as far (lowest terrain).
+        depth[depth == 0] = self._max
+
+        depth = np.clip(depth, self._min, self._max)
+        # Invert: close = high terrain, far = low terrain.
+        normalised = 1.0 - (depth - self._min) / (self._max - self._min)
+        normalised = normalised.astype(np.float32)
+
+        # Temporal EMA smoothing.
+        if self._ema is None or self._ema.shape != normalised.shape:
+            self._ema = normalised
+        else:
+            self._ema = (
+                self._alpha * normalised + (1.0 - self._alpha) * self._ema
+            ).astype(np.float32)
+        out = self._ema
+
+        if out.shape != (self._out_height, self._out_width):
+            from scipy.ndimage import zoom
+
+            zy = self._out_height / out.shape[0]
+            zx = self._out_width / out.shape[1]
+            out = zoom(out, (zy, zx), order=1).astype(np.float32)
+
+        with self._lock:
+            self._latest_depth = out
+        return out
+
+    def get_color_frame(self) -> np.ndarray | None:
+        return None
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def get_resolution(self) -> tuple[int, int]:
+        return (self._out_width, self._out_height)
+
+    def get_sensor_name(self) -> str:
+        return "Kinect V2 (Kinect for Windows SDK)"
+
+    def get_sensor_info(self) -> dict:
+        return {
+            "name": self.get_sensor_name(),
+            "resolution": self.get_resolution(),
+            "connected": self.is_connected(),
+            "depth_range_mm": (int(self._min), int(self._max)),
+            "backend": "pykinect2",
+        }
+
+    def set_depth_range(self, min_mm: int, max_mm: int) -> None:
+        max_mm = max(int(max_mm), int(min_mm) + 50)
+        with self._lock:
+            self._min = float(min_mm)
+            self._max = float(max_mm)
+
+    def auto_calibrate_flat_surface(
+        self,
+        samples: int = 30,
+        roi_frac: float = 0.5,
+        build_height_mm: int = 250,
+        dig_depth_mm: int = 120,
+    ) -> tuple[int, int] | None:
+        """Sample the flat sand surface (sensor mounted top-down over the sandbox)
+        and derive a sensible (min_mm, max_mm) depth range.
+
+        The median depth of the central ROI is taken as the flat sand plane.
+        Sculpted peaks rise toward the sensor (plane - build_height_mm -> min/near)
+        and dug valleys recede from it (plane + dig_depth_mm -> max/far).
+        Returns (min_mm, max_mm), or None if no valid depth was captured.
+        Does NOT apply the range itself; the caller applies it via set_depth_range.
+        """
+        if not self._connected or self._kinect is None:
+            return None
+        import time as _time
+
+        h, w = self._NATIVE_H, self._NATIVE_W
+        y0, y1 = int(h * (1 - roi_frac) / 2), int(h * (1 + roi_frac) / 2)
+        x0, x1 = int(w * (1 - roi_frac) / 2), int(w * (1 + roi_frac) / 2)
+        medians: list[float] = []
+        deadline = _time.time() + 5.0
+        while len(medians) < samples and _time.time() < deadline:
+            if not self._kinect.has_new_depth_frame():
+                _time.sleep(0.01)
+                continue
+            raw = self._kinect.get_last_depth_frame()
+            frame = np.asarray(raw, dtype=np.float32).reshape(h, w)[y0:y1, x0:x1]
+            valid = frame[frame > 0]
+            if valid.size:
+                medians.append(float(np.median(valid)))
+        if not medians:
+            return None
+        plane = float(np.median(medians))
+        min_mm = int(max(500, plane - build_height_mm))
+        max_mm = int(min(4500, plane + dig_depth_mm))
+        if max_mm <= min_mm:
+            max_mm = min_mm + 200
+        return (min_mm, max_mm)
+
+    def set_filter_params(
+        self,
+        *,
+        temporal_alpha: float,
+        change_threshold_mm: int,
+        persistence_frames: int,
+        foreground_reject_mm: int,
+    ) -> None:
+        self._alpha = float(temporal_alpha)
+
+    def resize(self, width: int, height: int) -> None:
+        with self._lock:
+            self._out_width = int(width)
+            self._out_height = int(height)
