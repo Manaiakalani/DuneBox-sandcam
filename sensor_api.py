@@ -345,13 +345,15 @@ class KinectV1Sensor(DepthSensor):
                 self._lib.freenect_close_device(self._dev)
         except Exception:
             pass
+        # Join the event thread BEFORE destroying _ctx to avoid use-after-free
+        # (the thread may still be inside freenect_process_events)
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
         try:
             if self._ctx:
                 self._lib.freenect_shutdown(self._ctx)
         except Exception:
             pass
-        if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=1.0)
         self._dev = None
         self._ctx = None
         logger.info("Kinect V1 disconnected")
@@ -1764,7 +1766,15 @@ class KinectV2SdkSensor(DepthSensor):
         if not self._kinect.has_new_depth_frame():
             return None
         raw = self._kinect.get_last_depth_frame()
-        frame = np.asarray(raw, dtype=np.float32).reshape(h, w)[y0:y1, x0:x1]
+        if raw is None:
+            return None
+        try:
+            arr = np.asarray(raw, dtype=np.float32)
+            if arr.size != h * w:
+                return None
+            frame = arr.reshape(h, w)[y0:y1, x0:x1]
+        except (ValueError, TypeError):
+            return None
         valid = frame[frame > 0]
         if not valid.size:
             return None

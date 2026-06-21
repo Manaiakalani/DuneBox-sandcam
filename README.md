@@ -29,8 +29,8 @@ A lightweight, cross-platform augmented reality sandbox built with Python, pygam
 | Sensor | Config value | Library | Resolution | Range |
 |---|---|---|---|---|
 | Kinect v1 (Xbox 360) | `kinect_v1` | libfreenect (bundled) | 640×480 | 0.4–4.0 m |
-| Kinect v2 (Xbox One) | `kinect_v2` | pylibfreenect2 | 512×424 | 0.5–4.5 m |
-| Kinect v2 — Windows SDK | `kinect_v2_sdk` | pykinect2 + comtypes (Kinect for Windows SDK 2.0) | 512×424 | 0.5–4.5 m |
+| Kinect v2 (Xbox One) — native | `kinect_v2` | pylibfreenect2 (Linux/macOS, manual install) | 512×424 | 0.5–4.5 m |
+| Kinect v2 (Xbox One) — Windows SDK | `kinect_v2_sdk` | pykinect2 + comtypes (Windows, `kinect-v2` extra) | 512×424 | 0.5–4.5 m |
 | Orbbec Femto Bolt | `orbbec` | pyorbbecsdk or pyk4a | 640×576 | 0.25–5.5 m |
 | Orbbec Astra | `orbbec` | pyorbbecsdk | 640×480 | 0.6–8.0 m |
 | Intel RealSense D435 | `realsense` | pyrealsense2 | 1280×720 | 0.1–10 m |
@@ -50,11 +50,8 @@ Edit `sandcam-settings.json`:
 ### Installing sensor libraries
 
 ```bash
-# Kinect V2 (cross-platform, libfreenect2)
-pip install pylibfreenect2
-# Also needs libfreenect2: brew install libfreenect2 (macOS) / see docs (Linux/Win)
-
-# Kinect V2 on Windows via the official Microsoft SDK (recommended on Windows)
+# Kinect V2 on Windows via the official Microsoft SDK (RECOMMENDED on Windows)
+# This is installed automatically by `uv sync --extra kinect-v2` or `pip install sandcam[kinect-v2]`
 pip install pykinect2 comtypes
 # Also install the Kinect for Windows SDK 2.0 (provides the USB driver + Kinect20.dll):
 #   https://www.microsoft.com/en-us/download/details.aspx?id=44561
@@ -62,6 +59,13 @@ pip install pykinect2 comtypes
 #   "sensor_type": "kinect_v2_sdk" in sandcam-settings.json.
 # Once the sensor is mounted top-down over the sandbox, press the "A" key in the
 # app to auto-calibrate the depth range from the flat sand surface.
+
+# Kinect V2 on Linux/macOS via libfreenect2 (MANUAL install — not in pyproject extras)
+pip install pylibfreenect2
+# Also needs libfreenect2 native library:
+#   macOS: brew install libfreenect2
+#   Linux: see https://github.com/OpenKinect/libfreenect2
+# Then set "sensor_type": "kinect_v2" in sandcam-settings.json.
 
 # Orbbec (native SDK)
 pip install pyorbbecsdk
