@@ -222,7 +222,10 @@ class AppBridge:
         deadline = time.monotonic() + 5.0
         while sent_total < len(data):
             try:
-                sent_total += sock.send(view[sent_total:])
+                sent = sock.send(view[sent_total:])
+                if sent == 0:
+                    raise OSError("Bridge: socket send returned 0")
+                sent_total += sent
             except BlockingIOError:
                 if time.monotonic() > deadline:
                     raise OSError("Bridge: send timed out (socket not writable)")
