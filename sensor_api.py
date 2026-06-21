@@ -1730,11 +1730,13 @@ class KinectV2SdkSensor(DepthSensor):
         return "Kinect V2 (Kinect for Windows SDK)"
 
     def get_sensor_info(self) -> dict:
+        with self._lock:
+            depth_range = (int(self._min), int(self._max))
         return {
             "name": self.get_sensor_name(),
             "resolution": self.get_resolution(),
             "connected": self.is_connected(),
-            "depth_range_mm": (int(self._min), int(self._max)),
+            "depth_range_mm": depth_range,
             "backend": "pykinect2",
         }
 
