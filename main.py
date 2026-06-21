@@ -398,6 +398,9 @@ def main() -> int:
     brush_radius = BRUSH_DEFAULT
 
     # ── DEM overlay state ─────────────────────────────────────────────
+    # TODO: dem_terrain is loaded but never passed to renderer.draw() or blended
+    # with the depth frame. The DEM overlay feature is incomplete. To finish it,
+    # blend dem_terrain with frame using config.dem_blend_factor before rendering.
     dem_terrain: np.ndarray | None = None
     dem_terrain_idx = max(0, BUILTIN_TERRAINS.index(config.dem_current_terrain)) if config.dem_current_terrain in BUILTIN_TERRAINS else 0
     dem_flash_timer = 0.0  # seconds remaining to show terrain name on screen
