@@ -9,3 +9,7 @@ __pycache__/
 *-venv/
 sandcam-settings.json
 *.egg-info/
+
+# transient launch log
+_launch.log
+*.log

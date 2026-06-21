@@ -81,6 +81,14 @@ pip install sandcam[all-sensors]
 ### Windows (one click)
 Double-click **`run.bat`** — it installs Python and dependencies automatically, then launches.
 
+### Put it on your desktop (easiest)
+Double-click **`Install Desktop Shortcuts.cmd`** once. It adds a **DuneBox** icon
+to your desktop (plus a **DuneBox (Magic-Sand C++)** icon if that repo sits next
+to this one). After that, just double-click **DuneBox** to run — no terminal,
+no commands. The installer is safe to re-run; it refreshes the icons in place.
+
+> Prefer PowerShell? Run `install-desktop-shortcuts.ps1` directly.
+
 Or use the full setup script:
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force
