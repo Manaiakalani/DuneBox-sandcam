@@ -48,6 +48,15 @@ class DepthStreamServer:
         """Start the WebSocket server in a background daemon thread."""
         if self._running:
             return
+        # A previous stop() may have timed out, leaving the old thread alive.
+        # Don't spawn a second thread on top of it: its finally block would later
+        # clobber the new thread's refs. Refuse to start until it has exited.
+        if self._thread is not None and self._thread.is_alive():
+            log.warning(
+                "DepthStreamServer: previous background thread still alive; "
+                "not starting a new one"
+            )
+            return
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -167,10 +176,14 @@ class DepthStreamServer:
             except Exception:
                 pass
             loop.close()
-            # Clear instance refs; safe now since thread is exiting
-            self._loop = None
-            self._thread = None
-            self._running = False
+            # Clear instance refs only if they still point to THIS thread/loop.
+            # If stop() timed out and start() later spawned a replacement thread,
+            # those refs now belong to the new thread — don't clobber them.
+            if self._loop is loop:
+                self._loop = None
+            if self._thread is threading.current_thread():
+                self._thread = None
+                self._running = False
 
     async def _serve(self) -> None:
         import websockets.server
