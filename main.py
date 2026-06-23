@@ -24,6 +24,7 @@ Tab         open / close settings sidebar
 Esc / Q     quit
 """
 
+import logging
 import math
 import random
 import sys
@@ -62,6 +63,8 @@ from bridge import AppBridge
 from depth_server import DepthStreamServer
 from volcano import VolcanoManager, EruptionState
 from earthquake import EarthquakeDetector
+
+logger = logging.getLogger(__name__)
 
 FPS           = 60
 BRUSH_MIN     = 8

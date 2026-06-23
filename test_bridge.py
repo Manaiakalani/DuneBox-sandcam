@@ -27,6 +27,12 @@ class FakeSocket:
     def sendall(self, data):
         self.sent.append(data)
 
+    def send(self, data):
+        # Non-blocking socket API used by bridge._send_all(); accept the whole
+        # buffer in one call and report the byte count, like a ready socket.
+        self.sent.append(bytes(data))
+        return len(data)
+
 
 def _run_service(chunks):
     """Run one _service_connection pass over the given recv chunks."""

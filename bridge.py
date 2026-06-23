@@ -59,6 +59,13 @@ class AppBridge:
         """Start the bridge in a background daemon thread."""
         if self._running:
             return
+        # Refuse to spawn a second worker while a prior thread is still winding
+        # down (e.g. after a stop() whose join() timed out). Mirrors
+        # DepthStreamServer.start() so a quick stop()/start() can't leave two
+        # threads fighting over the same sockets.
+        if self._thread is not None and self._thread.is_alive():
+            log.warning("Bridge start() ignored: previous thread still alive")
+            return
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -67,9 +74,15 @@ class AppBridge:
     def stop(self) -> None:
         """Cleanly shut down the bridge."""
         self._running = False
-        if self._thread is not None:
-            self._thread.join(timeout=3.0)
-            self._thread = None
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=3.0)
+            if thread.is_alive():
+                # Join timed out; leave _thread set so a later start() can detect
+                # the still-alive worker instead of spawning a duplicate.
+                log.warning("Bridge thread did not stop within timeout")
+            else:
+                self._thread = None
         self._close_all()
         log.info("Bridge stopped")
 
@@ -95,18 +108,24 @@ class AppBridge:
 
     def _run(self) -> None:
         """Main loop for the background thread."""
-        while self._running:
-            try:
-                if self._role == "server":
-                    self._run_server()
-                else:
-                    self._run_client()
-            except Exception:
-                log.exception("Bridge thread error")
-                self._connected_event.clear()
-                self._close_conn()
-                if self._running:
-                    time.sleep(2.0)
+        try:
+            while self._running:
+                try:
+                    if self._role == "server":
+                        self._run_server()
+                    else:
+                        self._run_client()
+                except Exception:
+                    log.exception("Bridge thread error")
+                    self._connected_event.clear()
+                    self._close_conn()
+                    if self._running:
+                        time.sleep(2.0)
+        finally:
+            # Clear our own handle if stop() left it set (e.g. a timed-out join),
+            # so a subsequent start() is not blocked by this finished thread.
+            if self._thread is threading.current_thread():
+                self._thread = None
 
     def _run_server(self) -> None:
         """Listen for a single client, then service the connection."""
