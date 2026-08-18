@@ -25,8 +25,6 @@ Esc / Q     quit
 """
 
 import logging
-import math
-import random
 import sys
 import time
 
@@ -61,7 +59,11 @@ from webcam_observer import (
 )
 from bridge import AppBridge
 from depth_server import DepthStreamServer
-from volcano import VolcanoManager, EruptionState
+from volcano import (
+    MARKER_VOLCANO_PLACE,
+    MARKER_VOLCANO_TRIGGER,
+    VolcanoManager,
+)
 from earthquake import EarthquakeDetector
 
 logger = logging.getLogger(__name__)
@@ -326,7 +328,12 @@ def main() -> int:
     screen, screen_w, screen_h = _make_display(config)
 
     # ── startup diagnostics ───────────────────────────────────────────
-    if not show_startup_diagnostics(screen, extended=extended_diag):
+    if not show_startup_diagnostics(
+        screen,
+        extended=extended_diag,
+        probe_webcam=extended_diag or config.vision_enabled,
+        camera_index=config.camera_index,
+    ):
         pygame.quit()
         return 0
 
@@ -374,7 +381,7 @@ def main() -> int:
     app_bridge.start()
     bridge_enabled = True
     depth_server = DepthStreamServer(
-        host="0.0.0.0",
+        host=config.depth_server_host,
         port=config.depth_server_port,
         max_fps=config.depth_server_max_fps,
     )
@@ -384,7 +391,6 @@ def main() -> int:
     volcano_mgr = VolcanoManager(render_w, render_h)
     volcano_place_mode = False  # 'O' key toggles placement mode
     earthquake_det = EarthquakeDetector(render_w, render_h)
-    prev_frame: np.ndarray | None = None  # previous depth frame for earthquake detection
     eco_mgr = EcosystemManager(render_w, render_h)
     eco_enabled = False
     app_start_time = time.monotonic()
@@ -470,9 +476,9 @@ def main() -> int:
                         status_flash_text = f"Ecosystem {'ON' if eco_enabled else 'OFF'}"
                         status_flash_timer = 2.0
                     elif event.key == pygame.K_EQUALS or event.key == pygame.K_PLUS:
-                        day_night.set_speed(day_night._speed + 0.5)
+                        day_night.adjust_speed(+0.5)
                     elif event.key == pygame.K_MINUS:
-                        day_night.set_speed(max(0.1, day_night._speed - 0.5))
+                        day_night.adjust_speed(-0.5)
                     elif event.key == pygame.K_p:
                         day_night.toggle_pause()
                     elif event.key == pygame.K_u:
@@ -533,6 +539,8 @@ def main() -> int:
                 scene = pygame.Surface((render_w, render_h))
                 renderer = Renderer(render_w, render_h)
                 source.resize(render_w, render_h)
+                volcano_mgr.resize(render_w, render_h)
+                earthquake_det.resize(render_w, render_h)
                 eco_mgr = EcosystemManager(render_w, render_h)
                 eco_mgr.set_enabled(eco_enabled)
 
@@ -728,23 +736,16 @@ def main() -> int:
                 sound_mgr.play_event(v_snd)
 
             # ── earthquake system ─────────────────────────────────────────────
-            quake_triggered = earthquake_det.update(frame, prev_frame, dt)
+            quake_triggered = earthquake_det.update(frame, dt=dt)
             if quake_triggered:
                 epi = earthquake_det.get_epicenter()
                 if epi is not None:
-                    # Stampede
                     if config.show_creatures:
                         creatures.trigger_stampede(epi[0], epi[1])
-                    # Volcanic chain reaction: 70% chance for nearby volcanoes
-                    for vi, v in enumerate(volcano_mgr._volcanoes):
-                        dist = math.hypot(v.x - epi[0], v.y - epi[1])
-                        if dist < 150 and random.random() < 0.7:
-                            if v.state in (EruptionState.DORMANT, EruptionState.COOLING):
-                                volcano_mgr.trigger_eruption(vi)
+                    volcano_mgr.trigger_nearby(epi[0], epi[1], radius=150, chance=0.7)
             for eq_snd in earthquake_det.pop_sound_events():
                 sound_mgr.play_event(eq_snd)
             earthquake_det.draw(scene)
-            prev_frame = frame.copy()
 
             # ── game modes ────────────────────────────────────────────────────
             game_mgr.update(frame, dt)
@@ -816,20 +817,9 @@ def main() -> int:
                 # ArUco markers for volcano (IDs 20, 21, 13)
                 for obj in vision_objects:
                     mid = obj.marker_id
-                    if mid == 20:
-                        # Place volcano at marker position
-                        vx = int(obj.sandbox_pos[0])
-                        vy = int(obj.sandbox_pos[1])
-                        volcano_mgr.place_volcano(vx, vy)
-                    elif mid == 21:
-                        # Trigger nearest volcano
-                        vx = int(obj.sandbox_pos[0])
-                        vy = int(obj.sandbox_pos[1])
-                        nearest = volcano_mgr.nearest_volcano(vx, vy)
-                        if nearest >= 0:
-                            volcano_mgr.trigger_eruption(nearest)
+                    if mid in (MARKER_VOLCANO_PLACE, MARKER_VOLCANO_TRIGGER):
+                        volcano_mgr.handle_marker(mid, obj.sandbox_pos)
                     elif mid == MARKER_EXTINCTION:
-                        # Extinction event — trigger ALL volcanoes
                         volcano_mgr.trigger_all()
 
             # ── bridge: send detected markers, handle incoming ────────────
@@ -842,15 +832,12 @@ def main() -> int:
                             "position": list(obj.sandbox_pos),
                             "timestamp": time.time(),
                         })
-                # Notify C++ app of volcano eruptions
-                if volcano_mgr.is_erupting():
-                    for v in volcano_mgr._volcanoes:
-                        if v.state == EruptionState.ERUPTING and abs(v.timer - 5.0) < dt * 2:
-                            app_bridge.send({
-                                "type": "volcano_eruption",
-                                "x": v.x / max(1, render_w),
-                                "y": v.y / max(1, render_h),
-                            })
+                for vx, vy in volcano_mgr.pop_new_eruptions():
+                    app_bridge.send({
+                        "type": "volcano_eruption",
+                        "x": vx / max(1, render_w),
+                        "y": vy / max(1, render_h),
+                    })
                 for bmsg in app_bridge.poll():
                     btype = bmsg.get("type", "")
                     if btype == "theme_change":
@@ -864,17 +851,7 @@ def main() -> int:
             if depth_server_enabled:
                 depth_server.push_frame(frame)
                 creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
-                _game_active = game_mgr.is_active()
-                _game_info = {"active": False}
-                if _game_active and game_mgr._active is not None:
-                    _gm = game_mgr._active
-                    _time_left = max(0.0, _gm.time_limit - _gm._elapsed) if _gm.time_limit > 0 else None
-                    _game_info = {
-                        "active": True,
-                        "mode": _gm.name,
-                        "score": _gm.get_score(),
-                        "time_left": round(_time_left, 1) if _time_left is not None else None,
-                    }
+                _game_info = game_mgr.get_status()
                 depth_server.push_state({
                     "fps": round(clock.get_fps(), 1),
                     "creatures": {
@@ -923,9 +900,9 @@ def main() -> int:
                             prev_day_night_phase = ""
                     elif action == "cycle_speed":
                         if value == "up":
-                            day_night.set_speed(day_night._speed + 0.5)
+                            day_night.adjust_speed(+0.5)
                         elif value == "down":
-                            day_night.set_speed(max(0.1, day_night._speed - 0.5))
+                            day_night.adjust_speed(-0.5)
                     elif action == "start_game":
                         if value in GameManager.get_available_modes():
                             game_mgr.start_game(value, source.get_frame())
@@ -1014,7 +991,7 @@ def main() -> int:
                 else "ws:off"
             )
             game_hud = "  F1-F4 games" if not game_mgr.is_active() else "  Esc end game"
-            volcano_state = "erupting" if volcano_mgr.is_erupting() else f"{len(volcano_mgr._volcanoes)}v"
+            volcano_state = "erupting" if volcano_mgr.is_erupting() else f"{volcano_mgr.count()}v"
             eco_state = "eco:on" if eco_enabled else "eco:off"
             hud = (f"Tab settings  C contours  G creatures:{creatures_state}  V set:{creature_set_label}  "
                    f"E {eco_state}  O volcano:{volcano_state}  "

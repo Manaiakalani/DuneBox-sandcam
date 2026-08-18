@@ -121,15 +121,15 @@ def _check_settings() -> DiagnosticItem:
     return DiagnosticItem("Settings", "warn", "using defaults")
 
 
-def _check_webcam() -> DiagnosticItem:
+def _check_webcam(camera_index: int = 0) -> DiagnosticItem:
     try:
         import cv2
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(camera_index)
         if cap.isOpened():
             cap.release()
-            return DiagnosticItem("Webcam", "ok", "camera 0 available")
+            return DiagnosticItem("Webcam", "ok", f"camera {camera_index} available")
         cap.release()
-        return DiagnosticItem("Webcam", "warn", "no camera detected")
+        return DiagnosticItem("Webcam", "warn", f"camera {camera_index} not detected")
     except ImportError:
         return DiagnosticItem("Webcam", "warn", "OpenCV required")
     except Exception as exc:
@@ -138,15 +138,24 @@ def _check_webcam() -> DiagnosticItem:
 
 # ── Full probe ────────────────────────────────────────────────────────────────
 
-def run_diagnostics() -> DiagnosticReport:
-    """Execute all hardware probes and return a report."""
+def run_diagnostics(
+    *,
+    probe_webcam: bool = False,
+    camera_index: int = 0,
+) -> DiagnosticReport:
+    """Execute hardware probes and return a report.
+
+    Webcam open is skipped by default so a booth reboot does not steal camera 0
+    when vision is off. Pass probe_webcam=True for --diagnostics or vision mode.
+    """
     report = DiagnosticReport()
     report.items.append(_check_python())
     report.items.append(_check_pygame())
     report.items.append(_check_displays())
     report.items.append(_check_kinect())
     report.items.append(_check_opencv())
-    report.items.append(_check_webcam())
+    if probe_webcam:
+        report.items.append(_check_webcam(camera_index))
     report.items.append(_check_sound())
     report.items.append(_check_settings())
     return report
@@ -227,13 +236,15 @@ def show_startup_diagnostics(
     *,
     extended: bool = False,
     brief_seconds: float = 2.0,
+    probe_webcam: bool = False,
+    camera_index: int = 0,
 ) -> bool:
     """
     Run probes, display results, then auto-proceed (or wait for keypress).
 
     Returns False if the user closed the window during diagnostics.
     """
-    report = run_diagnostics()
+    report = run_diagnostics(probe_webcam=probe_webcam, camera_index=camera_index)
     draw_diagnostics(screen, report, extended=extended)
 
     if extended:

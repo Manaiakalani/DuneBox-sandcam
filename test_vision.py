@@ -8,6 +8,9 @@ import numpy as np
 
 from interaction_engine import InteractionEngine
 from webcam_observer import (
+    ARUCO_DICTIONARY_NAME,
+    CORNER_MARKER_IDS,
+    OBJECT_KIND_BY_MARKER,
     CameraTestResult,
     CalibrationData,
     VisionObject,
@@ -30,6 +33,27 @@ class VisionTests(unittest.TestCase):
         self.assertIsNotNone(calibration)
         assert calibration is not None
         self.assertTrue(calibration.ready)
+        self.assertEqual(CORNER_MARKER_IDS[102], "bottom_right")
+        self.assertEqual(CORNER_MARKER_IDS[103], "bottom_left")
+        self.assertEqual(ARUCO_DICTIONARY_NAME, "DICT_4X4_250")
+        self.assertIn(20, OBJECT_KIND_BY_MARKER)
+        self.assertIn(21, OBJECT_KIND_BY_MARKER)
+
+    def test_printed_corner_ids_build_uncrossed_homography(self) -> None:
+        # Filenames: TL-100, TR-101, BR-102, BL-103.
+        calibration = calibration_from_corner_markers(
+            [
+                (100, (10.0, 10.0)),
+                (101, (110.0, 10.0)),
+                (102, (110.0, 110.0)),
+                (103, (10.0, 110.0)),
+            ]
+        )
+        self.assertIsNotNone(calibration)
+        assert calibration is not None
+        mapped = map_camera_to_sandbox((110.0, 110.0), calibration, (200, 200))
+        self.assertGreater(mapped[0], 150)
+        self.assertGreater(mapped[1], 150)
 
     def test_homography_maps_camera_center_to_scene_center(self) -> None:
         calibration = CalibrationData(

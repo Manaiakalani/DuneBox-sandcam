@@ -23,6 +23,10 @@ from renderer import Renderer
 from creatures import CreatureManager
 from interaction_engine import InteractionEngine
 from day_night import DayNightCycle
+from earthquake import EarthquakeDetector
+from ecosystem import EcosystemManager
+from game_modes import GameManager
+from volcano import VolcanoManager
 
 WIDTH, HEIGHT = 240, 180
 
@@ -43,9 +47,15 @@ def run(frames: int = 30) -> int:
     creatures = CreatureManager(n_sharks=2, n_dinos=2)
     interactions = InteractionEngine()
     day_night = DayNightCycle(cycle_duration=10.0)
+    volcano = VolcanoManager(WIDTH, HEIGHT)
+    quake = EarthquakeDetector(WIDTH, HEIGHT)
+    eco = EcosystemManager(WIDTH, HEIGHT)
+    games = GameManager()
 
     dt = 1.0 / 30.0
     now = 0.0
+
+    volcano.place_volcano(WIDTH // 2, HEIGHT // 2)
 
     for i in range(frames):
         frame = sensor.get_depth_frame()
@@ -62,6 +72,14 @@ def run(frames: int = 30) -> int:
         interactions.update([], frame, now, reactions_enabled=True)
         interactions.draw(surface)
         day_night.update(dt)
+        volcano.update(frame, dt)
+        volcano.draw(surface)
+        quake.update(frame, dt=dt)
+        quake.draw(surface)
+        eco.update(frame, dt)
+        eco.draw(surface)
+        games.update(frame, dt)
+        games.draw(surface)
         now += dt
 
     # Guard against silent "blank render" regressions: with the dummy SDL driver

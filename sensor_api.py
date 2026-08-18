@@ -300,34 +300,49 @@ class KinectV1Sensor(DepthSensor):
                 "is the Kinect plugged in and using the WinUSB driver (Zadig)?"
             )
 
-        mode = lib.freenect_find_depth_mode(
-            self._RESOLUTION_MEDIUM, self._DEPTH_11BIT
-        )
-        if not mode.is_valid:
-            raise RuntimeError("Could not find 640×480 11-bit depth mode")
-        lib.freenect_set_depth_mode(dev, mode)
+        try:
+            mode = lib.freenect_find_depth_mode(
+                self._RESOLUTION_MEDIUM, self._DEPTH_11BIT
+            )
+            if not mode.is_valid:
+                raise RuntimeError("Could not find 640×480 11-bit depth mode")
+            lib.freenect_set_depth_mode(dev, mode)
 
-        self._lib = lib
-        self._ctx = ctx
-        self._dev = dev
-        self._running = True
+            self._lib = lib
+            self._ctx = ctx
+            self._dev = dev
+            self._running = True
 
-        if self._quiet_native_logs:
-            self._log_cb = _LogCB(lambda _d, _l, _m: None)
-            lib.freenect_set_log_level(ctx, self._LOG_FATAL)
-            lib.freenect_set_log_callback(ctx, self._log_cb)
-        else:
-            lib.freenect_set_log_level(ctx, self._LOG_ERROR)
+            if self._quiet_native_logs:
+                self._log_cb = _LogCB(lambda _d, _l, _m: None)
+                lib.freenect_set_log_level(ctx, self._LOG_FATAL)
+                lib.freenect_set_log_callback(ctx, self._log_cb)
+            else:
+                lib.freenect_set_log_level(ctx, self._LOG_ERROR)
 
-        self._cb = _DepthCB(self._on_depth)
-        lib.freenect_set_depth_callback(dev, self._cb)
-        lib.freenect_start_depth(dev)
+            self._cb = _DepthCB(self._on_depth)
+            lib.freenect_set_depth_callback(dev, self._cb)
+            lib.freenect_start_depth(dev)
 
-        self._thread = threading.Thread(target=self._event_loop, daemon=True)
-        self._thread.start()
-        self._connected = True
-        logger.info("Kinect V1 connected (device %d)", self._device_index)
-        return True
+            self._thread = threading.Thread(target=self._event_loop, daemon=True)
+            self._thread.start()
+            self._connected = True
+            logger.info("Kinect V1 connected (device %d)", self._device_index)
+            return True
+        except Exception:
+            try:
+                lib.freenect_close_device(dev)
+            except Exception:
+                pass
+            try:
+                lib.freenect_shutdown(ctx)
+            except Exception:
+                pass
+            self._lib = None
+            self._ctx = None
+            self._dev = None
+            self._running = False
+            raise
 
     def disconnect(self) -> None:
         if self._closed:
@@ -490,8 +505,9 @@ class KinectV1Sensor(DepthSensor):
                 )
                 candidate_age[confirmed] = 0
 
+        span = max(float(max_ - min_), 50.0)
         frame = np.clip(
-            1.0 - (stable_raw - min_) / (max_ - min_),
+            1.0 - (stable_raw - min_) / span,
             0.0,
             1.0,
         ).astype(np.float32)

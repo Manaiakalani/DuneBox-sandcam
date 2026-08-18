@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from enum import Enum, auto
 
 import numpy as np
@@ -65,6 +66,11 @@ _CALDERA_GLOW = (200, 80, 20)
 _SMOKE_COLOR = (100, 100, 100)
 _STEAM_COLOR = (220, 220, 240)
 _ASH_COLOR = (60, 55, 50)
+
+MARKER_VOLCANO_PLACE = 20
+MARKER_VOLCANO_TRIGGER = 21
+_PLACE_SNAP_RADIUS = 40
+_MARKER_DEBOUNCE = 5.0
 
 
 # ── Particle dataclass ───────────────────────────────────────────────────────
@@ -131,11 +137,24 @@ class VolcanoManager:
 
         # Pre-computed lava surface (rebuilt each frame during draw)
         self._lava_surface: pygame.Surface | None = None
+        self._marker_last: dict[int, float] = {}
+        self._just_erupted: list[tuple[int, int]] = []
 
     # ── public API ────────────────────────────────────────────────────
 
-    def place_volcano(self, x: int, y: int) -> int:
-        """Place a volcano at (x, y). Returns index."""
+    def count(self) -> int:
+        """Number of placed vents."""
+        return len(self._volcanoes)
+
+    def place_volcano(self, x: int, y: int, *, snap_radius: int = _PLACE_SNAP_RADIUS) -> int:
+        """Place a volcano at (x, y), or reuse the nearest vent within snap_radius."""
+        nearest = self.nearest_volcano(x, y)
+        if nearest >= 0:
+            existing = self._volcanoes[nearest]
+            if math.hypot(existing.x - x, existing.y - y) <= snap_radius:
+                existing.x = int(x)
+                existing.y = int(y)
+                return nearest
         v = _Volcano(int(x), int(y))
         self._volcanoes.append(v)
         return len(self._volcanoes) - 1
@@ -149,6 +168,67 @@ class VolcanoManager:
             v.state = EruptionState.RUMBLING
             v.timer = _RUMBLE_DURATION
             self._sound_events.append("volcano_rumble")
+
+    def trigger_nearby(
+        self,
+        x: float,
+        y: float,
+        *,
+        radius: float = 150.0,
+        chance: float = 0.7,
+    ) -> int:
+        """Trigger dormant/cooling vents near (x, y). Returns how many started."""
+        started = 0
+        for i, v in enumerate(self._volcanoes):
+            if math.hypot(v.x - x, v.y - y) >= radius:
+                continue
+            if v.state in (EruptionState.DORMANT, EruptionState.COOLING) and random.random() < chance:
+                self.trigger_eruption(i)
+                started += 1
+        return started
+
+    def handle_marker(self, marker_id: int, sandbox_pos: tuple[float, float]) -> None:
+        """Debounced ArUco handling for place (20) and trigger (21)."""
+        now = time.monotonic()
+        if now - self._marker_last.get(marker_id, -1e9) < _MARKER_DEBOUNCE:
+            return
+        x, y = int(sandbox_pos[0]), int(sandbox_pos[1])
+        if marker_id == MARKER_VOLCANO_PLACE:
+            self.place_volcano(x, y)
+            self._marker_last[marker_id] = now
+        elif marker_id == MARKER_VOLCANO_TRIGGER:
+            nearest = self.nearest_volcano(x, y)
+            if nearest >= 0:
+                self.trigger_eruption(nearest)
+                self._marker_last[marker_id] = now
+
+    def pop_new_eruptions(self) -> list[tuple[int, int]]:
+        """Return and clear vent pixel positions that just entered ERUPTING."""
+        events = self._just_erupted
+        self._just_erupted = []
+        return events
+
+    def resize(self, width: int, height: int) -> None:
+        """Scale vents and lava fields after a display-size change."""
+        if width == self._w and height == self._h:
+            return
+        sx = width / max(1, self._w)
+        sy = height / max(1, self._h)
+        for v in self._volcanoes:
+            v.x = int(v.x * sx)
+            v.y = int(v.y * sy)
+        if self._lava.size:
+            from scipy.ndimage import zoom
+
+            zoom_factors = (height / max(1, self._h), width / max(1, self._w))
+            self._lava = zoom(self._lava, zoom_factors, order=0).astype(np.float32)
+            self._temperature = zoom(self._temperature, zoom_factors, order=0).astype(np.float32)
+        else:
+            self._lava = np.zeros((height, width), dtype=np.float32)
+            self._temperature = np.zeros((height, width), dtype=np.float32)
+        self._w = width
+        self._h = height
+        self._lava_surface = None
 
     def trigger_all(self) -> None:
         """Trigger every volcano (extinction event)."""
@@ -213,6 +293,7 @@ class VolcanoManager:
                 v.state = EruptionState.ERUPTING
                 v.timer = _ERUPTION_DURATION
                 self._sound_events.append("volcano_eruption")
+                self._just_erupted.append((v.x, v.y))
 
         elif v.state == EruptionState.ERUPTING:
             self._shake_intensity = max(self._shake_intensity, 8.0)

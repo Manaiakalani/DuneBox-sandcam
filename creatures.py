@@ -80,6 +80,8 @@ class Creature:
         self._state_timer = 0.0
         self._state_duration = self._roll_state_duration(self._moving)
         self._directional_frames = self._prepare_directional_frames()
+        # Marker-spawned creatures survive set_targets rebuilds.
+        self.pinned = False
 
     def is_valid(self, elevation: float) -> bool:
         raise NotImplementedError
@@ -1206,9 +1208,19 @@ class CreatureManager:
                 self._targets[cls] = self._targets.get(cls, 0) + 1
         # CREATURE_SET_NONE leaves _targets empty
 
-        # Remove creatures from disabled sets
+        # Remove creatures from disabled sets, but keep marker-spawned pins
+        # unless the operator explicitly chose the empty set.
+        if self._creature_set == CREATURE_SET_NONE:
+            self._creatures = []
+            return
         allowed = set(self._targets.keys())
-        self._creatures = [c for c in self._creatures if type(c) in allowed]
+        kept: list[Creature] = []
+        for c in self._creatures:
+            if type(c) in allowed or getattr(c, "pinned", False):
+                kept.append(c)
+                if getattr(c, "pinned", False):
+                    self._targets[type(c)] = max(self._targets.get(type(c), 0), 1)
+        self._creatures = kept
 
     @classmethod
     def prewarm_assets(cls, progress=None) -> bool:
@@ -1221,11 +1233,19 @@ class CreatureManager:
         return True
 
     def set_targets(self, *, sharks: int | None = None, dinosaurs: int | None = None) -> None:
+        changed = False
         if sharks is not None:
-            self._base_targets[Shark] = max(0, int(sharks))
+            next_sharks = max(0, int(sharks))
+            if self._base_targets.get(Shark) != next_sharks:
+                self._base_targets[Shark] = next_sharks
+                changed = True
         if dinosaurs is not None:
-            self._base_targets[Dinosaur] = max(0, int(dinosaurs))
-        self._apply_creature_set()
+            next_dinos = max(0, int(dinosaurs))
+            if self._base_targets.get(Dinosaur) != next_dinos:
+                self._base_targets[Dinosaur] = next_dinos
+                changed = True
+        if changed:
+            self._apply_creature_set()
 
     def set_night_mode(self, active: bool) -> None:
         """When active, creatures move at 50% speed."""
@@ -1263,6 +1283,7 @@ class CreatureManager:
     def spawn_at(self, cls: type[Creature], x: float, y: float, frame: np.ndarray) -> bool:
         """Try to spawn a creature of the given class at a specific position."""
         creature = cls(x, y)
+        creature.pinned = True
         if creature._valid_pos(frame, np.array([x, y])):
             self._creatures.append(creature)
             self._targets[cls] = self._targets.get(cls, 0) + 1
@@ -1311,6 +1332,11 @@ class CreatureManager:
         duration: float = 3.0,
     ) -> None:
         """All creatures flee radially from the epicentre at 2× speed."""
+        if self._stampede_timer > 0:
+            # A second slap during the window must not stack 2× speed.
+            self._stampede_timer = duration
+            self._stampede_epicenter = (epicenter_x, epicenter_y)
+            return
         self._stampede_timer = duration
         self._stampede_epicenter = (epicenter_x, epicenter_y)
         for c in self._creatures:
