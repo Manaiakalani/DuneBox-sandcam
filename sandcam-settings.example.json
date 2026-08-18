@@ -25,7 +25,7 @@
   "object_reactions_enabled": true,
   "persistence_frames": 4,
   "sensor_fallback": "mouse_simulator",
-  "sensor_type": "kinect_v1",
+  "sensor_type": "kinect_v2_sdk",
   "shark_count": 4,
   "show_contours": true,
   "show_creatures": true,

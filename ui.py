@@ -78,7 +78,7 @@ class Config:
     fullscreen: bool = False
     windowed_w: int = 900
     windowed_h: int = 650
-    sensor_type: str = "kinect_v1"
+    sensor_type: str = "kinect_v2_sdk"
     sensor_fallback: str = "mouse_simulator"
     ai_enabled: bool = False
     guide_enabled: bool = True
@@ -238,6 +238,7 @@ class Config:
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
             "depth_server_enabled": self.depth_server_enabled,
+            "depth_server_host": self.depth_server_host,
             "depth_server_port": self.depth_server_port,
             "depth_server_max_fps": self.depth_server_max_fps,
         }
