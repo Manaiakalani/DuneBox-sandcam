@@ -1218,8 +1218,6 @@ class CreatureManager:
         for c in self._creatures:
             if type(c) in allowed or getattr(c, "pinned", False):
                 kept.append(c)
-                if getattr(c, "pinned", False):
-                    self._targets[type(c)] = max(self._targets.get(type(c), 0), 1)
         self._creatures = kept
 
     @classmethod
@@ -1281,14 +1279,43 @@ class CreatureManager:
         )
 
     def spawn_at(self, cls: type[Creature], x: float, y: float, frame: np.ndarray) -> bool:
-        """Try to spawn a creature of the given class at a specific position."""
-        creature = cls(x, y)
+        """Try to spawn a pinned creature near (x, y). Does not raise the ambient quota."""
+        h, w = frame.shape
+        probe = cls(0.0, 0.0)
+        found: tuple[float, float] | None = None
+        if probe._valid_xy(frame, x, y):
+            found = (x, y)
+        else:
+            for step in (8, 16, 32, 48):
+                for dy in range(-step, step + 1, 8):
+                    for dx in range(-step, step + 1, 8):
+                        nx = float(np.clip(x + dx, 0, w - 1))
+                        ny = float(np.clip(y + dy, 0, h - 1))
+                        if probe._valid_xy(frame, nx, ny):
+                            found = (nx, ny)
+                            break
+                    if found is not None:
+                        break
+                if found is not None:
+                    break
+            if found is None:
+                for radius in (80, 140, 220):
+                    for _ in range(24):
+                        angle = random.uniform(0, math.tau)
+                        dist = random.uniform(0, radius)
+                        nx = float(np.clip(x + math.cos(angle) * dist, 0, w - 1))
+                        ny = float(np.clip(y + math.sin(angle) * dist, 0, h - 1))
+                        if probe._valid_xy(frame, nx, ny):
+                            found = (nx, ny)
+                            break
+                    if found is not None:
+                        break
+        if found is None:
+            return False
+        creature = cls(found[0], found[1])
         creature.pinned = True
-        if creature._valid_pos(frame, np.array([x, y])):
-            self._creatures.append(creature)
-            self._targets[cls] = self._targets.get(cls, 0) + 1
-            return True
-        return False
+        self._creatures.append(creature)
+        return True
 
     def handle_marker(self, marker_id: int, sandbox_pos: tuple[float, float], frame: np.ndarray) -> list[str]:
         """Handle ArUco marker detection for dino spawning. Returns sound events."""
@@ -1310,10 +1337,15 @@ class CreatureManager:
 
         cls, count = spawn_info
         sx, sy = sandbox_pos
-        for i in range(count):
+        spawned = 0
+        for _ in range(count):
             offset_x = sx + random.uniform(-40, 40)
             offset_y = sy + random.uniform(-40, 40)
-            self.spawn_at(cls, offset_x, offset_y, frame)
+            if self.spawn_at(cls, offset_x, offset_y, frame):
+                spawned += 1
+
+        if spawned == 0:
+            return events
 
         if cls is TRex:
             events.append("dino_roar")
@@ -1480,6 +1512,8 @@ class CreatureManager:
     def _spawn_missing(self, frame: np.ndarray, w: int, h: int) -> int:
         counts: dict[type[Creature], int] = {cls: 0 for cls in self._targets}
         for creature in self._creatures:
+            if getattr(creature, "pinned", False):
+                continue
             counts[type(creature)] = counts.get(type(creature), 0) + 1
 
         spawned = 0

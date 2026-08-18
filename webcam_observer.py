@@ -47,6 +47,23 @@ _DEST_POINT_ORDER = {
 }
 
 
+def _corner_sample(marker: "_TrackedMarker") -> tuple[float, float]:
+    """Use the tag's image-extreme corner, not its centre."""
+    pts = marker.corners
+    if not pts:
+        return marker.camera_pos
+    label = CORNER_MARKER_IDS.get(marker.marker_id, "")
+    if label == "top_left":
+        return min(pts, key=lambda p: p[0] + p[1])
+    if label == "top_right":
+        return min(pts, key=lambda p: -p[0] + p[1])
+    if label == "bottom_right":
+        return max(pts, key=lambda p: p[0] + p[1])
+    if label == "bottom_left":
+        return min(pts, key=lambda p: p[0] - p[1])
+    return marker.camera_pos
+
+
 @dataclass(frozen=True)
 class CameraTestResult:
     ok: bool
@@ -358,11 +375,13 @@ class WebcamObserver:
         self._error_message = ""
         self._backend_index: int | None = None
         self._backend_name: str | None = None
+        self._detector = None
 
         if self._cv2 is None:
             self._error_message = "OpenCV is not installed."
             return
 
+        self._detector = self._make_detector()
         self._start_capture()
 
     @property
@@ -434,21 +453,27 @@ class WebcamObserver:
                 self._latest_frame = frame
                 self._update_tracks(detections, now)
 
+    def _make_detector(self):
+        cv2 = self._cv2
+        if cv2 is None or not hasattr(cv2, "aruco") or not hasattr(cv2.aruco, "getPredefinedDictionary"):
+            return None
+        dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
+        if hasattr(cv2.aruco, "ArucoDetector"):
+            return cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
+        return dictionary
+
     def _detect_markers(self, frame: np.ndarray) -> list[tuple[int, tuple[float, float], tuple[tuple[float, float], ...]]]:
         assert self._cv2 is not None
         cv2 = self._cv2
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        if hasattr(cv2, "aruco") and hasattr(cv2.aruco, "getPredefinedDictionary"):
-            dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
-            if hasattr(cv2.aruco, "DetectorParameters"):
-                detector = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
-                corners, ids, _rejected = detector.detectMarkers(gray)
-            else:
-                parameters = cv2.aruco.DetectorParameters_create()
-                corners, ids, _rejected = cv2.aruco.detectMarkers(gray, dictionary, parameters=parameters)
-        else:
+        detector = self._detector
+        if detector is None:
             return []
+        if hasattr(detector, "detectMarkers"):
+            corners, ids, _rejected = detector.detectMarkers(gray)
+        else:
+            parameters = cv2.aruco.DetectorParameters_create()
+            corners, ids, _rejected = cv2.aruco.detectMarkers(gray, detector, parameters=parameters)
 
         results: list[tuple[int, tuple[float, float], tuple[tuple[float, float], ...]]] = []
         if ids is None:
@@ -504,11 +529,11 @@ class WebcamObserver:
 
     def auto_calibrate(self) -> CalibrationData | None:
         with self._lock:
-            points = [
-                (marker.marker_id, marker.camera_pos)
-                for marker in self._tracked.values()
-                if marker.marker_id in CORNER_MARKER_IDS
-            ]
+            points = []
+            for marker in self._tracked.values():
+                if marker.marker_id not in CORNER_MARKER_IDS:
+                    continue
+                points.append((marker.marker_id, _corner_sample(marker)))
         return calibration_from_corner_markers(points)
 
     def get_objects(

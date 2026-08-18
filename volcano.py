@@ -46,6 +46,7 @@ class EruptionState(Enum):
 
 _RUMBLE_DURATION = 2.0
 _ERUPTION_DURATION = 5.0
+_FLOWING_DURATION = 8.0
 _COOLING_DURATION = 15.0
 
 # ── Lava simulation ─────────────────────────────────────────────────────────
@@ -305,16 +306,14 @@ class VolcanoManager:
             self._add_lava_source(v.x, v.y, radius=12, amount=_LAVA_SOURCE_RATE * dt * 60)
             if v.timer <= 0:
                 v.state = EruptionState.FLOWING
-                v.timer = 0.0
+                v.timer = _FLOWING_DURATION
 
         elif v.state == EruptionState.FLOWING:
-            self._shake_intensity = max(self._shake_intensity, 2.0)
-            # Keep adding lava at a diminishing rate
-            rate = _LAVA_SOURCE_RATE * 0.3 * dt * 60
-            self._add_lava_source(v.x, v.y, radius=8, amount=rate)
-            # Transition to cooling when lava flow velocity is negligible
-            total_lava = float(np.sum(self._lava))
-            if total_lava < 0.5:
+            remaining = max(0.0, v.timer / _FLOWING_DURATION)
+            rate = _LAVA_SOURCE_RATE * 0.3 * remaining * dt * 60
+            if rate > 1e-6:
+                self._add_lava_source(v.x, v.y, radius=8, amount=rate)
+            if v.timer <= 0:
                 v.state = EruptionState.COOLING
                 v.timer = _COOLING_DURATION
 

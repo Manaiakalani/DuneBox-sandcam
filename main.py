@@ -806,21 +806,17 @@ def main() -> int:
                 for _ve in vision_events:
                     sound_mgr.play_event("marker_detected")
 
-                # ArUco markers for dinosaur spawning (IDs 10-13)
-                for obj in vision_objects:
-                    mid = obj.marker_id
-                    if mid in MARKER_DINO_SPAWN or mid == MARKER_EXTINCTION:
-                        dino_events = creatures.handle_marker(mid, obj.sandbox_pos, frame)
-                        for de in dino_events:
-                            sound_mgr.play_event(de)
-
-                # ArUco markers for volcano (IDs 20, 21, 13)
-                for obj in vision_objects:
-                    mid = obj.marker_id
-                    if mid in (MARKER_VOLCANO_PLACE, MARKER_VOLCANO_TRIGGER):
-                        volcano_mgr.handle_marker(mid, obj.sandbox_pos)
-                    elif mid == MARKER_EXTINCTION:
-                        volcano_mgr.handle_marker(mid, obj.sandbox_pos)
+                # Gameplay tags need a ready homography; otherwise sandbox_pos
+                # is raw camera pixels and lands off the sand.
+                if calibration.ready:
+                    for obj in vision_objects:
+                        mid = obj.marker_id
+                        if mid in MARKER_DINO_SPAWN or mid == MARKER_EXTINCTION:
+                            dino_events = creatures.handle_marker(mid, obj.sandbox_pos, frame)
+                            for de in dino_events:
+                                sound_mgr.play_event(de)
+                        if mid in (MARKER_VOLCANO_PLACE, MARKER_VOLCANO_TRIGGER, MARKER_EXTINCTION):
+                            volcano_mgr.handle_marker(mid, obj.sandbox_pos)
 
             new_eruptions = volcano_mgr.pop_new_eruptions()
 

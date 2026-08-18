@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import unittest
 
-from volcano import MARKER_EXTINCTION, MARKER_VOLCANO_PLACE, EruptionState, VolcanoManager
+import numpy as np
+
+from volcano import (
+    MARKER_EXTINCTION,
+    MARKER_VOLCANO_PLACE,
+    MARKER_VOLCANO_TRIGGER,
+    EruptionState,
+    VolcanoManager,
+)
 
 
 class VolcanoManagerTests(unittest.TestCase):
@@ -36,6 +44,24 @@ class VolcanoManagerTests(unittest.TestCase):
         mgr.handle_marker(MARKER_EXTINCTION, (40.0, 40.0))
         self.assertEqual(mgr._volcanoes[0].state, EruptionState.DORMANT)
         self.assertEqual(first_state, EruptionState.RUMBLING)
+
+    def test_trigger_marker_starts_eruption(self) -> None:
+        mgr = VolcanoManager(200, 160)
+        mgr.place_volcano(80, 90)
+        mgr.handle_marker(MARKER_VOLCANO_TRIGGER, (80.0, 90.0))
+        self.assertTrue(mgr.is_erupting())
+        mgr.handle_marker(MARKER_VOLCANO_TRIGGER, (80.0, 90.0))
+        self.assertEqual(sum(1 for v in mgr._volcanoes if v.state == EruptionState.RUMBLING), 1)
+
+    def test_flowing_reaches_cooling(self) -> None:
+        mgr = VolcanoManager(64, 64)
+        mgr.place_volcano(32, 32)
+        mgr.trigger_eruption(0)
+        terrain = np.full((64, 64), 0.5, dtype=np.float32)
+        for _ in range(int(20 / 0.05)):
+            mgr.update(terrain, 0.05)
+        self.assertFalse(mgr.is_erupting())
+        self.assertEqual(mgr.get_shake_offset(), (0, 0))
 
     def test_resize_scales_vent_coordinates(self) -> None:
         mgr = VolcanoManager(100, 100)

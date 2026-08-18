@@ -210,6 +210,9 @@ class GameMode(ABC):
     def get_score(self) -> int:
         return self._score
 
+    def get_elapsed(self) -> float:
+        return self._elapsed
+
     def is_complete(self) -> bool:
         return self._complete
 
@@ -723,7 +726,7 @@ class GameManager:
             return {"active": False}
         game = self._active
         time_left = (
-            max(0.0, game.time_limit - game._elapsed) if game.time_limit > 0 else None
+            max(0.0, game.time_limit - game.get_elapsed()) if game.time_limit > 0 else None
         )
         return {
             "active": True,
