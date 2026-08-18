@@ -19,6 +19,14 @@ _FLOW_RATE = 0.15  # fraction of excess transferred per step
 _SIM_STEPS = 2     # cellular-automata iterations per frame
 
 
+def _shift(a: np.ndarray, dy: int, dx: int, mode: str) -> np.ndarray:
+    """Shift ``a`` so result[i, j] == a[i - dy, j - dx] without wrap-around."""
+    ady, adx = abs(dy), abs(dx)
+    ap = np.pad(a, ((ady, ady), (adx, adx)), mode=mode)
+    h, w = a.shape
+    return ap[ady - dy: ady - dy + h, adx - dx: adx - dx + w]
+
+
 def water_sim_step(
     terrain: np.ndarray,
     water: np.ndarray,
@@ -37,11 +45,11 @@ def water_sim_step(
     for _ in range(_SIM_STEPS):
         surface = terrain + water
         for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-            neighbour = np.roll(surface, (dy, dx), axis=(0, 1))
+            neighbour = _shift(surface, dy, dx, "edge")
             diff = surface - neighbour
             flow = np.clip(diff * _FLOW_RATE, 0.0, water)
             water -= flow
-            water += np.roll(flow, (-dy, -dx), axis=(0, 1))
+            water += _shift(flow, -dy, -dx, "constant")
             surface = terrain + water  # refresh
 
     water *= 0.998  # gentle evaporation
@@ -708,6 +716,21 @@ class GameManager:
 
     def is_active(self) -> bool:
         return self._active is not None
+
+    def get_status(self) -> dict:
+        """Dashboard-safe snapshot of the active game (no private access)."""
+        if self._active is None:
+            return {"active": False}
+        game = self._active
+        time_left = (
+            max(0.0, game.time_limit - game._elapsed) if game.time_limit > 0 else None
+        )
+        return {
+            "active": True,
+            "mode": game.name,
+            "score": game.get_score(),
+            "time_left": round(time_left, 1) if time_left is not None else None,
+        }
 
     def pop_started(self) -> bool:
         """Return True once when a game just started (for sound triggers)."""

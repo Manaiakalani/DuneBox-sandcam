@@ -83,22 +83,31 @@ class EarthquakeDetector:
 
         # Sound events emitted this frame
         self._sound_events: list[str] = []
+        self._prev: np.ndarray | None = None
 
     # ── public API ────────────────────────────────────────────────────
 
     def update(
         self,
         height_data: np.ndarray,
-        prev_height_data: np.ndarray | None,
-        dt: float,
+        prev_height_data: np.ndarray | None = None,
+        dt: float = 1.0 / 60.0,
     ) -> bool:
-        """Detect earthquake from depth changes. Returns True if triggered this frame."""
+        """Detect earthquake from depth changes. Returns True if triggered this frame.
+
+        Callers may omit *prev_height_data*; the detector keeps a reused buffer
+        so the main loop does not have to copy the heightfield every frame.
+        """
         dt = min(dt, 0.1)
         triggered = False
 
-        # Try to detect a new earthquake
-        if prev_height_data is not None:
-            triggered = self._detect(height_data, prev_height_data)
+        previous = prev_height_data if prev_height_data is not None else self._prev
+        if previous is not None:
+            triggered = self._detect(height_data, previous)
+        if self._prev is None or self._prev.shape != height_data.shape:
+            self._prev = height_data.copy()
+        else:
+            np.copyto(self._prev, height_data)
 
         # Update ongoing effects
         self._update_rings(dt)
@@ -134,6 +143,12 @@ class EarthquakeDetector:
         events = self._sound_events
         self._sound_events = []
         return events
+
+    def resize(self, width: int, height: int) -> None:
+        """Keep detection state after a display-size change."""
+        self._w = width
+        self._h = height
+        self._prev = None
 
     def force_trigger(self, cx: int, cy: int, intensity: float = 0.8) -> None:
         """Manually trigger an earthquake at (cx, cy) — for testing via K key."""

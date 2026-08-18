@@ -99,6 +99,7 @@ class Config:
     sound_enabled: bool = True
     sound_master_volume: float = 0.7
     depth_server_enabled: bool = False
+    depth_server_host: str = "127.0.0.1"
     depth_server_port: int = 8765
     depth_server_max_fps: int = 10
     vision_calibrating: bool = False

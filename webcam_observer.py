@@ -17,11 +17,13 @@ from typing import Any
 
 import numpy as np
 
+# Printed assets live in calibration/: TL-100, TR-101, BR-102, BL-103.
+# IDs 100–103 require DICT_4X4_250 (DICT_4X4_50 only covers 0–49).
 CORNER_MARKER_IDS = {
     100: "top_left",
     101: "top_right",
-    102: "bottom_left",
-    103: "bottom_right",
+    102: "bottom_right",
+    103: "bottom_left",
 }
 OBJECT_KIND_BY_MARKER = {
     1: "boat",
@@ -33,7 +35,10 @@ OBJECT_KIND_BY_MARKER = {
     11: "raptor_marker",
     12: "pteranodon_marker",
     13: "extinction_marker",
+    20: "volcano_place",
+    21: "volcano_trigger",
 }
+ARUCO_DICTIONARY_NAME = "DICT_4X4_250"
 _DEST_POINT_ORDER = {
     "top_left": 0,
     "top_right": 1,
@@ -435,7 +440,7 @@ class WebcamObserver:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         if hasattr(cv2, "aruco") and hasattr(cv2.aruco, "getPredefinedDictionary"):
-            dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+            dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
             if hasattr(cv2.aruco, "DetectorParameters"):
                 detector = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
                 corners, ids, _rejected = detector.detectMarkers(gray)

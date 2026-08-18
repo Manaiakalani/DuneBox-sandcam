@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 class DepthStreamServer:
     """Broadcast depth frames and app state over WebSocket."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8765, max_fps: int = 10) -> None:
+    def __init__(self, host: str = "127.0.0.1", port: int = 8765, max_fps: int = 10) -> None:
         self._host = host
         self._port = port
         self._max_fps = max(1, max_fps)
@@ -215,7 +215,8 @@ class DepthStreamServer:
                         data = json.loads(message)
                         if data.get("type") == "command":
                             with self._lock:
-                                self._command_queue.append(data)
+                                if len(self._command_queue) < 32:
+                                    self._command_queue.append(data)
                     except (json.JSONDecodeError, AttributeError):
                         pass
         except Exception:

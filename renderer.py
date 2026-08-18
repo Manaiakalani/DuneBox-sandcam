@@ -85,6 +85,10 @@ class Renderer:
         self._work = np.empty((height, width), dtype=np.float32)
         self._indices = np.empty((height, width), dtype=np.uint8)
         self._rgb = np.empty((height, width, 3), dtype=np.uint8)
+        self._dy = np.empty((height, width), dtype=np.float32)
+        self._dx = np.empty((height, width), dtype=np.float32)
+        self._shade = np.empty((height, width), dtype=np.float32)
+        self._rgb_f = np.empty((height, width, 3), dtype=np.float32)
 
     def draw(
         self,
@@ -120,10 +124,22 @@ class Renderer:
         self._indices[...] = self._work
         self._rgb[...] = lut[self._indices]
 
-        # Hillshading — NW light source
-        dy, dx = np.gradient(self._display)
-        shade = np.clip(1.0 - 0.6 * dy + 0.2 * dx, 0.5, 1.3).astype(np.float32)
-        self._rgb[...] = np.clip(self._rgb * shade[:, :, np.newaxis], 0, 255).astype(np.uint8)
+        # Hillshading — NW light source. Finite differences in-place so the
+        # 60 FPS path does not allocate two gradient arrays every frame.
+        src = self._display
+        self._dy[1:-1, :] = (src[2:, :] - src[:-2, :]) * 0.5
+        self._dy[0, :] = src[1, :] - src[0, :]
+        self._dy[-1, :] = src[-1, :] - src[-2, :]
+        self._dx[:, 1:-1] = (src[:, 2:] - src[:, :-2]) * 0.5
+        self._dx[:, 0] = src[:, 1] - src[:, 0]
+        self._dx[:, -1] = src[:, -1] - src[:, -2]
+        np.multiply(self._dy, -0.6, out=self._shade)
+        self._shade += 1.0
+        self._shade += self._dx * 0.2
+        np.clip(self._shade, 0.5, 1.3, out=self._shade)
+        np.multiply(self._rgb, self._shade[:, :, np.newaxis], out=self._rgb_f)
+        np.clip(self._rgb_f, 0, 255, out=self._rgb_f)
+        self._rgb[...] = self._rgb_f
 
         # Contour lines (above waterline only)
         if show_contours:
@@ -140,7 +156,9 @@ class Renderer:
         # Day/night light tint
         if light_tint is not None and light_tint != (1.0, 1.0, 1.0):
             tint = np.array(light_tint, dtype=np.float32).reshape(1, 1, 3)
-            self._rgb[...] = np.clip(self._rgb * tint, 0, 255).astype(np.uint8)
+            np.multiply(self._rgb, tint, out=self._rgb_f)
+            np.clip(self._rgb_f, 0, 255, out=self._rgb_f)
+            self._rgb[...] = self._rgb_f
 
         # pygame surfarray is (W, H, 3) — transpose from numpy's (H, W, 3)
         pygame.surfarray.blit_array(self._surf, self._rgb.transpose(1, 0, 2))

@@ -109,21 +109,56 @@ uv run python main.py
 
 Runs in **mouse simulator mode** if no Kinect is connected — no hardware needed to try it out.
 
+## Controls
+
+| Key | Action |
+|---|---|
+| Tab | Settings sidebar |
+| A | Auto-calibrate Kinect v2 depth range from the flat sand |
+| C | Toggle contour lines |
+| G | Toggle creatures |
+| V | Cycle creature set (modern / prehistoric / all / none) |
+| O | Toggle volcano click-to-place |
+| K | Trigger earthquake at centre |
+| S | Mute / unmute |
+| N | Toggle day/night cycle |
+| E | Toggle ecosystem |
+| +/- | Speed up / slow down day/night |
+| P | Pause day/night |
+| F1–F4 | Start dam / volcano / watershed / biome games |
+| F5 | Save terrain snapshot |
+| B | Toggle TCP bridge to DuneBox (C++) |
+| U | Toggle local WebSocket depth server (`ws://127.0.0.1:8765`) |
+| R | Reset simulated terrain |
+| Esc / Q | Quit |
+
+## ArUco marker IDs
+
+Print the 4×4 markers in `calibration/` (dictionary **DICT_4X4_250**).
+
+| IDs | Role |
+|---|---|
+| 1–5 | Toys: boat, dino, house, tree, volcano (guide + reactions) |
+| 10–13 | Dinosaur spawn / extinction |
+| 20 | Place a volcano at the tag |
+| 21 | Trigger the nearest volcano |
+| 100 / 101 / 102 / 103 | Corners: TL / TR / BR / BL (files `TL-100.svg` … `BL-103.svg`) |
+
 ## Project Structure
 
 ```
 DuneBox-sandcam/
 ├── main.py              # Entry point + depth processing loop
 ├── renderer.py          # Elevation LUT + hillshading + contours
+├── sensor_api.py        # Pluggable depth sensors
 ├── creatures.py         # Biome-aware creature system
 ├── webcam_observer.py   # ArUco marker detection via webcam
 ├── interaction_engine.py # Marker → event triggering
 ├── ai_guide.py          # Optional AI narration
 ├── ui.py                # Settings sidebar + display picker
-├── depth_source.py      # Kinect v1 via libfreenect
-├── calibration/         # Projector-Kinect alignment tools
+├── calibration/         # Printed corner tags (100–103)
 ├── assets/              # Creature sprites + themes
-└── sandcam-settings.json # Runtime configuration
+└── sandcam-settings.example.json # Portable first-run defaults
 ```
 
 ## See Also

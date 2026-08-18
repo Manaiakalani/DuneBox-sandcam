@@ -174,6 +174,14 @@ class DayNightCycle:
     def set_speed(self, multiplier: float) -> None:
         self._speed = max(0.1, multiplier)
 
+    def get_speed(self) -> float:
+        return self._speed
+
+    def adjust_speed(self, delta: float) -> float:
+        """Nudge the cycle speed and return the new multiplier."""
+        self.set_speed(self._speed + delta)
+        return self._speed
+
     def toggle_pause(self) -> None:
         self._paused = not self._paused
 
