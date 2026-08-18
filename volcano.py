@@ -69,6 +69,7 @@ _ASH_COLOR = (60, 55, 50)
 
 MARKER_VOLCANO_PLACE = 20
 MARKER_VOLCANO_TRIGGER = 21
+MARKER_EXTINCTION = 13
 _PLACE_SNAP_RADIUS = 40
 _MARKER_DEBOUNCE = 5.0
 
@@ -201,6 +202,9 @@ class VolcanoManager:
             if nearest >= 0:
                 self.trigger_eruption(nearest)
                 self._marker_last[marker_id] = now
+        elif marker_id == MARKER_EXTINCTION:
+            self.trigger_all()
+            self._marker_last[marker_id] = now
 
     def pop_new_eruptions(self) -> list[tuple[int, int]]:
         """Return and clear vent pixel positions that just entered ERUPTING."""

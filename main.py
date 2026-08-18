@@ -820,7 +820,9 @@ def main() -> int:
                     if mid in (MARKER_VOLCANO_PLACE, MARKER_VOLCANO_TRIGGER):
                         volcano_mgr.handle_marker(mid, obj.sandbox_pos)
                     elif mid == MARKER_EXTINCTION:
-                        volcano_mgr.trigger_all()
+                        volcano_mgr.handle_marker(mid, obj.sandbox_pos)
+
+            new_eruptions = volcano_mgr.pop_new_eruptions()
 
             # ── bridge: send detected markers, handle incoming ────────────
             if bridge_enabled and app_bridge.is_connected():
@@ -832,7 +834,7 @@ def main() -> int:
                             "position": list(obj.sandbox_pos),
                             "timestamp": time.time(),
                         })
-                for vx, vy in volcano_mgr.pop_new_eruptions():
+                for vx, vy in new_eruptions:
                     app_bridge.send({
                         "type": "volcano_eruption",
                         "x": vx / max(1, render_w),

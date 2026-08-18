@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from volcano import MARKER_VOLCANO_PLACE, VolcanoManager
+from volcano import MARKER_EXTINCTION, MARKER_VOLCANO_PLACE, EruptionState, VolcanoManager
 
 
 class VolcanoManagerTests(unittest.TestCase):
@@ -26,6 +26,16 @@ class VolcanoManagerTests(unittest.TestCase):
         mgr.handle_marker(MARKER_VOLCANO_PLACE, (80.0, 90.0))
         mgr.handle_marker(MARKER_VOLCANO_PLACE, (140.0, 40.0))
         self.assertEqual(mgr.count(), 1)
+
+    def test_extinction_marker_is_debounced(self) -> None:
+        mgr = VolcanoManager(200, 160)
+        mgr.place_volcano(40, 40)
+        mgr.handle_marker(MARKER_EXTINCTION, (40.0, 40.0))
+        first_state = mgr._volcanoes[0].state
+        mgr._volcanoes[0].state = EruptionState.DORMANT
+        mgr.handle_marker(MARKER_EXTINCTION, (40.0, 40.0))
+        self.assertEqual(mgr._volcanoes[0].state, EruptionState.DORMANT)
+        self.assertEqual(first_state, EruptionState.RUMBLING)
 
     def test_resize_scales_vent_coordinates(self) -> None:
         mgr = VolcanoManager(100, 100)
