@@ -1,0 +1,46 @@
+{
+  "id": "watersheds",
+  "title": {"en": "Where does the rain go?", "es": "¿Adónde va la lluvia?"},
+  "level": {"en": "Ages 8–12", "es": "De 8 a 12 años"},
+  "minutes": 15,
+  "summary": {
+    "en": "Build a ridge between two valleys, predict where rain will flow, then test it.",
+    "es": "Construye una cresta entre dos valles, predice hacia dónde correrá la lluvia y compruébalo."
+  },
+  "steps": [
+    {
+      "title": {"en": "Make two valleys", "es": "Haz dos valles"},
+      "text": {
+        "en": "Build a long ridge across the middle of the box, with a valley on each side.",
+        "es": "Construye una cresta larga en el centro de la caja, con un valle a cada lado."
+      },
+      "settings": {"theme": "terrain", "contours": true, "contour_labels": false, "sea_level": 0},
+      "check": {
+        "metric": "relief", "min": 0.12,
+        "hint": {"en": "Make the ridge higher", "es": "Haz la cresta más alta"}
+      }
+    },
+    {
+      "title": {"en": "Predict", "es": "Predice"},
+      "text": {
+        "en": "If rain falls right on top of the ridge, which valley does the water go to? Point to where you think it will end up.",
+        "es": "Si la lluvia cae justo en lo alto de la cresta, ¿a qué valle va el agua? Señala dónde crees que terminará."
+      }
+    },
+    {
+      "title": {"en": "Let it rain", "es": "Que llueva"},
+      "text": {
+        "en": "Watch the water flow downhill. The ridge is a watershed: it splits the rain between the two valleys.",
+        "es": "Mira cómo el agua baja por la pendiente. La cresta es una divisoria de aguas: reparte la lluvia entre los dos valles."
+      },
+      "settings": {"game": "watershed"}
+    },
+    {
+      "title": {"en": "Build a dam", "es": "Construye una presa"},
+      "text": {
+        "en": "Block the bottom of one valley with a wall of sand. What happens to the water behind it?",
+        "es": "Bloquea el final de un valle con un muro de arena. ¿Qué le pasa al agua que queda detrás?"
+      }
+    }
+  ]
+}

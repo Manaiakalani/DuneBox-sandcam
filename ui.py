@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import pygame
 
 from buttons import clean_map
+from classroom import LANGUAGES
 from kiosk import parse_hours
 
 # ── palette (DESIGN.md tokens, shared with the web dashboard) ────────────────
@@ -150,6 +151,7 @@ class Config:
     button_map: dict | None = None    # button id -> buttons.BUTTON_ACTIONS key
     buttons_serial: bool = False      # Arduino buttons over USB serial
     buttons_port: str = ""            # serial port; empty = find the Arduino
+    language: str = "en"              # lessons and messages on the sand
     ai_enabled: bool = False
     guide_enabled: bool = True
     guide_challenges_enabled: bool = True
@@ -282,6 +284,8 @@ class Config:
         config.button_map = clean_map(config.button_map)
         config.buttons_serial = bool(config.buttons_serial)
         config.buttons_port = str(config.buttons_port or "").strip()
+        if config.language not in LANGUAGES:
+            config.language = "en"
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
@@ -335,6 +339,7 @@ class Config:
             "button_map": self.button_map,
             "buttons_serial": self.buttons_serial,
             "buttons_port": self.buttons_port,
+            "language": self.language,
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
             "depth_server_enabled": self.depth_server_enabled,

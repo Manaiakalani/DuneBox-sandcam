@@ -41,6 +41,10 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
     </span>
   </div>
 
+  <select class="input select select-sm lang-select" id="ui-lang" aria-label="Dashboard language">
+    <option value="en">EN</option>
+    <option value="es">ES</option>
+  </select>
   <button class="btn btn-ghost voice-btn" id="voice-btn" type="button" aria-pressed="false">
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     <span class="voice-label">Voice</span>
@@ -186,6 +190,54 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
         </dl>
       </div>
       <ul class="game-list" id="game-list"></ul>
+    </fieldset>
+
+    <fieldset class="group" id="classroom-controls" disabled>
+      <legend class="group-title">Classroom</legend>
+      <div class="lesson-live" id="lesson-live" hidden>
+        <div class="lesson-live-head">
+          <span class="lesson-live-title" id="lesson-title"></span>
+          <span class="num lesson-progress" id="lesson-progress"></span>
+        </div>
+        <ol class="lesson-dots" id="lesson-dots" aria-label="Steps"></ol>
+        <p class="lesson-step-title" id="lesson-step-title"></p>
+        <p class="lesson-text" id="lesson-text"></p>
+        <p class="lesson-goal" id="lesson-goal" hidden></p>
+        <div class="button-row">
+          <button class="btn btn-secondary" type="button" data-action="lesson_step" data-value="prev" id="lesson-prev">Back</button>
+          <button class="btn btn-primary" type="button" data-action="lesson_step" data-value="next" id="lesson-next">Next step</button>
+          <button class="btn btn-secondary" type="button" data-action="stop_lesson">End lesson</button>
+        </div>
+        <p class="row-hint">A presentation clicker works too: Page Down for the next step.</p>
+      </div>
+      <ul class="lesson-list" id="lesson-list"></ul>
+      <div class="row">
+        <label class="row-label" for="sand-language">Language on the sand</label>
+        <select class="input select select-sm" id="sand-language"></select>
+      </div>
+      <div class="row row-stack">
+        <span class="row-label" id="teams-label">Teams</span>
+        <div class="segmented segmented-4" role="radiogroup" aria-labelledby="teams-label" id="teams-group">
+          <button type="button" role="radio" aria-checked="true" data-action="set_teams" data-value="0">Off</button>
+          <button type="button" role="radio" aria-checked="false" data-action="set_teams" data-value="2">2</button>
+          <button type="button" role="radio" aria-checked="false" data-action="set_teams" data-value="3">3</button>
+          <button type="button" role="radio" aria-checked="false" data-action="set_teams" data-value="4">4</button>
+        </div>
+      </div>
+      <div id="teams-live" hidden>
+        <ul class="team-list" id="team-list"></ul>
+        <div class="award" id="award" hidden>
+          <p class="row-hint" id="award-text"></p>
+          <div class="award-row" id="award-row"></div>
+        </div>
+        <div class="row">
+          <span class="row-label">Show scores on the sand</span>
+          <button class="switch" type="button" role="switch" aria-checked="true" data-action="toggle_scoreboard" aria-label="Show scores on the sand"></button>
+        </div>
+        <div class="button-row">
+          <button class="btn btn-secondary" type="button" data-action="reset_scores">Reset scores</button>
+        </div>
+      </div>
     </fieldset>
 
     <fieldset class="group" id="system-controls" disabled>
@@ -372,6 +424,7 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
 
 <ol class="toasts" id="toasts" aria-live="polite" aria-label="Notifications"></ol>
 
+<script src="/assets/i18n.js" defer></script>
 <script src="/assets/voice.js" defer></script>
 <script src="/assets/view3d.js" defer></script>
 <script src="/assets/app.js" defer></script>

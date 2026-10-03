@@ -450,6 +450,58 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--text); }
   background-repeat: no-repeat;
   cursor: pointer;
 }
+.select-sm { height: 36px; font-size: var(--fs-sm); padding-left: 10px; }
+.lang-select { width: auto; flex: none; }
+.segmented-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.lesson-list { display: flex; flex-direction: column; }
+.lesson-list:empty { display: none; }
+.lesson-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.lesson-name { font-weight: 500; color: var(--text); }
+.lesson-meta { grid-column: 1; font-size: var(--fs-sm); color: var(--text-2); }
+.lesson-list .btn { grid-row: 1 / span 2; grid-column: 2; }
+.lesson-live {
+  margin: 4px 0 12px;
+  padding: 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+}
+.lesson-live-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lesson-live-title { font-size: var(--fs-sm); color: var(--text-2); }
+.lesson-progress { font-size: var(--fs-sm); color: var(--text-2); }
+.lesson-dots { display: flex; gap: 4px; margin: 10px 0 12px; }
+.lesson-dots li { flex: 1; height: 3px; border-radius: 2px; background: var(--border-strong); }
+.lesson-dots li.past, .lesson-dots li.current { background: var(--accent); }
+.lesson-step-title { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; }
+.lesson-text { margin-top: 4px; color: var(--text); }
+.lesson-goal { margin-top: 10px; font-size: var(--fs-sm); color: var(--warn); }
+.lesson-goal[data-done="true"] { color: var(--ok); }
+.lesson-live .button-row { padding-bottom: 4px; }
+
+.team-list { display: flex; flex-direction: column; }
+.team-list li {
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) 56px auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  border-bottom: 1px solid var(--border);
+}
+.team-swatch { width: 4px; height: 28px; border-radius: 2px; }
+.team-list .input { height: 36px; font-size: var(--fs-sm); }
+.team-score { font: 600 var(--fs-xl) / 1 var(--font); text-align: right; font-variant-numeric: tabular-nums; }
+.award { padding: 10px 0 2px; }
+.award .row-hint { padding-bottom: 6px; }
+.award-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
 .button-map { display: flex; flex-direction: column; }
 .button-map:empty { display: none; }
 .button-map li {

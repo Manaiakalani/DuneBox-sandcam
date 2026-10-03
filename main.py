@@ -43,6 +43,18 @@ from ai_guide import (
 )
 from bridge import AppBridge
 from buttons import BUTTON_ACTIONS, ButtonInput, button_for_key, button_label
+from classroom import (
+    DONE_LABEL,
+    LANGUAGES,
+    TEAM_LABEL,
+    LessonPlayer,
+    Scoreboard,
+    draw_lesson,
+    draw_scoreboard,
+    load_lessons,
+    localized,
+    measure,
+)
 from creatures import MARKER_DINO_SPAWN, MARKER_EXTINCTION, CreatureManager
 from day_night import DayNightCycle
 from dem_loader import export_snapshot, list_snapshots, load_snapshot
@@ -480,6 +492,29 @@ def main() -> int:
     button_input = ButtonInput(
         config.button_map, serial_enabled=config.buttons_serial, port=config.buttons_port
     )
+    lessons = LessonPlayer(load_lessons())
+    lesson_checked = 0.0
+    scoreboard = Scoreboard()
+
+    def apply_lesson_settings(settings: dict) -> None:
+        if settings.get("theme") in SCHEMES:
+            config.colour_scheme = settings["theme"]
+        if "contours" in settings:
+            config.show_contours = bool(settings["contours"])
+        if "contour_labels" in settings:
+            config.contour_labels = bool(settings["contour_labels"])
+        if (interval := _as_float(settings.get("contour_interval"))) is not None:
+            config.contour_interval = max(0.02, min(0.12, interval))
+        if (sea := _as_float(settings.get("sea_level"))) is not None:
+            config.sea_level_offset = max(-0.2, min(0.2, sea))
+        if "creatures" in settings:
+            config.show_creatures = bool(settings["creatures"])
+        game = str(settings.get("game") or "")
+        if game.startswith("challenge:"):
+            game_mgr.start_game("challenge", source.get_frame(), target=game.split(":", 1)[1])
+        elif game in GameManager.get_mode_names():
+            game_mgr.start_game(game, source.get_frame())
+        config.request_save()
     snapshots: list[dict] = []
     snapshots_dirty = True
     snapshots_checked = 0.0
@@ -534,6 +569,11 @@ def main() -> int:
                     button = button_for_key(pygame.key.name(event.key))
                     if button is not None:
                         button_input.press(button)
+                        continue
+                    # Presentation clickers send Page Up / Page Down
+                    if lessons.lesson and event.key in (pygame.K_PAGEDOWN, pygame.K_PAGEUP):
+                        step = 1 if event.key == pygame.K_PAGEDOWN else -1
+                        apply_lesson_settings(lessons.go(lessons.index + step))
                         continue
 
                 if event.type == pygame.KEYDOWN:
@@ -1059,6 +1099,12 @@ def main() -> int:
                     },
                     "kiosk": kiosk.status(datetime.now()),
                     "buttons": button_input.status(),
+                    "classroom": {
+                        "lessons": lessons.status(config.language),
+                        "scoreboard": scoreboard.status(),
+                        "language": config.language,
+                        "languages": LANGUAGES,
+                    },
                     "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
                     "dunebox": dunebox_state,
                     "dashboard": {
@@ -1309,6 +1355,66 @@ def main() -> int:
                     button_input.configure_serial(config.buttons_serial, config.buttons_port)
                     config.request_save()
                     message = f"Arduino buttons {'on' if config.buttons_serial else 'off'}"
+                elif action == "start_lesson":
+                    settings = lessons.start(str(value))
+                    if settings is None:
+                        ok, message = False, f"Unknown lesson: {value}"
+                    else:
+                        apply_lesson_settings(settings)
+                        message = f"Lesson: {localized(lessons.lesson.title, config.language)}"
+                elif action == "lesson_step":
+                    if lessons.lesson is None:
+                        ok, message = False, "No lesson is running"
+                    else:
+                        target_step = lessons.index + (1 if value == "next" else -1 if value == "prev" else 0)
+                        if isinstance(value, int) and not isinstance(value, bool):
+                            target_step = value
+                        apply_lesson_settings(lessons.go(target_step))
+                        message = f"Step {lessons.index + 1} of {len(lessons.lesson.steps)}"
+                elif action == "stop_lesson":
+                    lessons.stop()
+                    message = "Lesson ended"
+                elif action == "set_language":
+                    if value in LANGUAGES:
+                        config.language = value
+                        config.request_save()
+                        message = f"Language on the sand: {LANGUAGES[value]}"
+                    else:
+                        ok, message = False, f"Unsupported language: {value}"
+                elif action == "set_teams":
+                    count = _as_float(value)
+                    if count is None:
+                        ok, message = False, "Number of teams must be a number"
+                    else:
+                        scoreboard.set_count(int(count), localized(TEAM_LABEL, config.language))
+                        message = f"{len(scoreboard.teams)} teams" if scoreboard.teams else "Scoreboard off"
+                elif action == "team_points":
+                    team = value.get("team") if isinstance(value, dict) else None
+                    points = _as_float(value.get("points")) if isinstance(value, dict) else None
+                    if not isinstance(team, int) or points is None or not scoreboard.add(team, int(points)):
+                        ok, message = False, "Couldn't change that team's score"
+                    else:
+                        message = f"{scoreboard.teams[team]['name']}: {scoreboard.teams[team]['score']}"
+                elif action == "rename_team":
+                    team = value.get("team") if isinstance(value, dict) else None
+                    name = str(value.get("name", "")) if isinstance(value, dict) else ""
+                    if not isinstance(team, int) or not scoreboard.rename(team, name):
+                        ok, message = False, "Team names can't be empty"
+                    else:
+                        message = f"Renamed to {scoreboard.teams[team]['name']}"
+                elif action == "award_game":
+                    team = value if isinstance(value, int) and not isinstance(value, bool) else -1
+                    points = scoreboard.award(team)
+                    if points is None:
+                        ok, message = False, "No game score to award"
+                    else:
+                        message = f"{points} points to {scoreboard.teams[team]['name']}"
+                elif action == "reset_scores":
+                    scoreboard.reset()
+                    message = "Scores reset"
+                elif action == "toggle_scoreboard":
+                    scoreboard.visible = not scoreboard.visible
+                    message = f"Scoreboard {'shown' if scoreboard.visible else 'hidden'} on the sand"
                 elif action == "reset_terrain":
                     if hasattr(source, "reset"):
                         source.reset()
@@ -1390,6 +1496,20 @@ def main() -> int:
             pygame.draw.circle(screen, (255, 255, 255), (mx, my), brush_radius, 1)
 
             # ── DEM flash notification ────────────────────────────────────
+            scoreboard.note_game(game_mgr.get_status())
+            flash_y = 30
+            if lessons.lesson is not None:
+                if time.monotonic() - lesson_checked > 1.0:
+                    lesson_checked = time.monotonic()
+                    if lessons.update(measure(frame, WATER_LEVEL)):
+                        status_flash_text = localized(DONE_LABEL, config.language)
+                        status_flash_timer = 2.0
+                flash_y = 12 + draw_lesson(
+                    screen, lessons.active_status(config.language), config.language
+                )
+            if scoreboard.visible and scoreboard.teams:
+                draw_scoreboard(screen, scoreboard.teams)
+
             if status_flash_timer > 0:
                 status_flash_timer -= dt
                 flash_alpha = min(255, int(255 * min(1.0, status_flash_timer / 0.3)))
@@ -1397,7 +1517,7 @@ def main() -> int:
                 flash_surf.set_alpha(flash_alpha)
                 screen.blit(
                     flash_surf,
-                    (screen.get_width() // 2 - flash_surf.get_width() // 2, 30),
+                    (screen.get_width() // 2 - flash_surf.get_width() // 2, flash_y),
                 )
 
             creatures_state = "on" if config.show_creatures else "off"

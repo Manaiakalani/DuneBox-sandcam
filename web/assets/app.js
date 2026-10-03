@@ -132,7 +132,7 @@
   }
 
   function setEnabled(on) {
-    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls", "kiosk-controls", "buttons-controls", "terrain-controls"]) {
+    for (const id of ["sandcam-controls", "events-controls", "games-controls", "classroom-controls", "system-controls", "kiosk-controls", "buttons-controls", "terrain-controls"]) {
       $(id).disabled = !on;
     }
     if (!on) $("dunebox-controls").disabled = true;
@@ -306,6 +306,7 @@
     renderThemes(s);
     renderWorld(s);
     renderGames(s);
+    renderClassroom(s);
     renderSetup(s);
     renderTerrains(s);
     renderKiosk(s);
@@ -722,6 +723,145 @@
           : `Projector ${POWER_LABELS[p.power] || p.power}.`;
   }
 
+  // ── Classroom: lessons and team scores ────────────────────────────
+  const TEAM_COLOURS = ["#52a8ff", "#f5a524", "#3fcf8e", "#ff6166"];
+  const t = (text) => (window.DuneI18n ? window.DuneI18n.t(text) : text);
+
+  let renderedLessons = "";
+  let renderedDots = "";
+  let renderedTeams = "";
+  let renderedAward = "";
+  let renderedLanguages = "";
+  function renderClassroom(s) {
+    const c = s.classroom;
+    if (!c) return;
+    const { catalogue, active } = c.lessons;
+
+    const catKey = JSON.stringify(catalogue);
+    if (catKey !== renderedLessons) {
+      renderedLessons = catKey;
+      $("lesson-list").replaceChildren(...catalogue.map((lesson) => {
+        const li = document.createElement("li");
+        const name = Object.assign(document.createElement("span"), { className: "lesson-name", textContent: lesson.title });
+        const meta = Object.assign(document.createElement("span"), {
+          className: "lesson-meta",
+          textContent: [lesson.level, lesson.minutes ? `${lesson.minutes} min` : "", `${lesson.steps} ${lesson.steps === 1 ? "step" : "steps"}`]
+            .filter(Boolean).join(" · "),
+        });
+        meta.title = lesson.summary;
+        li.append(name, meta, smallButton("Start", "start_lesson", lesson.id, `Start lesson: ${lesson.title}`));
+        return li;
+      }));
+    }
+    $("lesson-list").hidden = Boolean(active);
+    $("lesson-live").hidden = !active;
+    if (active) {
+      $("lesson-title").textContent = active.title;
+      $("lesson-progress").textContent = `${active.index + 1} / ${active.count}`;
+      const dotKey = `${active.count}|${active.index}`;
+      if (dotKey !== renderedDots) {
+        renderedDots = dotKey;
+        $("lesson-dots").replaceChildren(...Array.from({ length: active.count }, (_, i) => {
+          const li = document.createElement("li");
+          li.className = i < active.index ? "past" : i === active.index ? "current" : "";
+          return li;
+        }));
+      }
+      $("lesson-step-title").textContent = active.step_title;
+      $("lesson-text").textContent = active.text;
+      const goal = $("lesson-goal");
+      goal.hidden = !active.has_check;
+      goal.dataset.done = String(active.done);
+      goal.textContent = active.done ? `✓ ${t("Goal reached")}` : active.hint;
+      $("lesson-prev").disabled = active.index === 0;
+      $("lesson-next").disabled = active.index >= active.count - 1;
+    }
+
+    const langKey = JSON.stringify(c.languages);
+    const langSelect = $("sand-language");
+    if (langKey !== renderedLanguages) {
+      renderedLanguages = langKey;
+      langSelect.replaceChildren(...Object.entries(c.languages).map(([code, name]) => new Option(name, code)));
+    }
+    if (document.activeElement !== langSelect) langSelect.value = c.language;
+
+    const sb = c.scoreboard;
+    const n = sb.teams.length;
+    for (const b of $("teams-group").children) {
+      const on = Number(b.dataset.value) === n;
+      b.setAttribute("aria-checked", String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    $("teams-live").hidden = n === 0;
+    const teamKey = JSON.stringify(sb.teams.map((x) => x.name));
+    if (teamKey !== renderedTeams && !$("team-list").contains(document.activeElement)) {
+      renderedTeams = teamKey;
+      $("team-list").replaceChildren(...sb.teams.map((team, i) => {
+        const li = document.createElement("li");
+        const sw = Object.assign(document.createElement("span"), { className: "team-swatch" });
+        sw.style.background = TEAM_COLOURS[i];
+        const input = Object.assign(document.createElement("input"), {
+          className: "input", type: "text", value: team.name, maxLength: 24,
+        });
+        input.setAttribute("aria-label", `Team ${i + 1} name`);
+        input.addEventListener("change", () => {
+          sendCommand({ action: "rename_team", value: { team: i, name: input.value } });
+        });
+        input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") input.blur(); });
+        const score = Object.assign(document.createElement("span"), { className: "team-score num" });
+        score.dataset.team = String(i);
+        const minus = Object.assign(document.createElement("button"), {
+          type: "button", className: "btn btn-secondary btn-sm", textContent: "−1",
+        });
+        minus.setAttribute("aria-label", `Take a point from ${team.name}`);
+        minus.addEventListener("click", () => sendCommand({ action: "team_points", value: { team: i, points: -1 } }, minus));
+        const plus = Object.assign(document.createElement("button"), {
+          type: "button", className: "btn btn-secondary btn-sm", textContent: "+1",
+        });
+        plus.setAttribute("aria-label", `Give a point to ${team.name}`);
+        plus.addEventListener("click", () => sendCommand({ action: "team_points", value: { team: i, points: 1 } }, plus));
+        li.append(sw, input, score, minus, plus);
+        return li;
+      }));
+    }
+    for (const el of $("team-list").querySelectorAll(".team-score")) {
+      const team = sb.teams[Number(el.dataset.team)];
+      if (team) el.textContent = String(team.score);
+    }
+
+    const last = sb.last_game;
+    const awardKey = last && n ? JSON.stringify([last, sb.teams.map((x) => x.name)]) : "";
+    $("award").hidden = !awardKey;
+    if (awardKey !== renderedAward) {
+      renderedAward = awardKey;
+      if (awardKey) {
+        const result = Object.assign(document.createElement("strong"), { textContent: `${last.mode} · ${last.score}` });
+        $("award-text").replaceChildren(result, document.createElement("br"), t("Give the last game's points to:"));
+        $("award-row").replaceChildren(...sb.teams.map((team, i) => {
+          const b = Object.assign(document.createElement("button"), {
+            type: "button", className: "btn btn-secondary btn-sm", textContent: team.name,
+          });
+          b.addEventListener("click", () => sendCommand({ action: "award_game", value: i }, b));
+          return b;
+        }));
+      }
+    }
+    setSwitch('#classroom-controls [data-action="toggle_scoreboard"]', sb.visible);
+  }
+
+  $("sand-language").addEventListener("change", (ev) => {
+    sendCommand({ action: "set_language", value: ev.target.value });
+  });
+
+  // Dashboard language, remembered per device
+  const uiLang = $("ui-lang");
+  uiLang.value = localStorage.getItem("dunebox.lang") || (navigator.language.startsWith("es") ? "es" : "en");
+  if (window.DuneI18n) window.DuneI18n.setLanguage(uiLang.value);
+  uiLang.addEventListener("change", () => {
+    localStorage.setItem("dunebox.lang", uiLang.value);
+    window.DuneI18n && window.DuneI18n.setLanguage(uiLang.value);
+  });
+
   // ── Physical buttons ──────────────────────────────────────────────
   function buttonName(id) {
     if (id.startsWith("keypad ")) return `Keypad ${id.slice(7)}`;
@@ -996,7 +1136,8 @@
     if (reason) { toast(reason, "err"); return; }
     if (listening) { setListening(false); recognizer && recognizer.stop(); return; }
     recognizer = new Recognition();
-    recognizer.lang = document.documentElement.lang || "en";
+    // The phrase parser only understands English, whatever the dashboard language
+    recognizer.lang = "en-US";
     recognizer.continuous = true;
     recognizer.interimResults = false;
     recognizer.onresult = (ev) => {
