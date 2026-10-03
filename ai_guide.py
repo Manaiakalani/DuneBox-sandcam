@@ -7,13 +7,13 @@ messages and are entirely optional.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import json
 import math
 import os
 import queue
 import threading
 import time
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 from urllib import error, request
 

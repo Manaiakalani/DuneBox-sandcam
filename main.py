@@ -16,22 +16,23 @@ N           toggle day/night cycle
 E           toggle ecosystem simulation
 +/-         speed up / slow down day/night cycle
 P           pause / resume day/night cycle
-F5          save current terrain snapshot
+F5          save current terrain snapshot (.npy, ESRI .asc DEM, .png)
+T           start / stop timelapse frames (assets/timelapse/)
 R           reset terrain (simulator only)
 B           toggle DuneBox bridge (TCP link to C++ app)
-U           toggle WebSocket depth server (remote monitoring)
+U           toggle the web dashboard (http://127.0.0.1:8765/ by default)
 Tab         open / close settings sidebar
 Esc / Q     quit
 """
 
 import logging
+import re
 import sys
 import time
+from datetime import datetime
 
 import numpy as np
 import pygame
-
-from diagnostics import show_startup_diagnostics
 
 from ai_guide import (
     AsyncConnectionTester,
@@ -40,31 +41,58 @@ from ai_guide import (
     TemplateNarrator,
     build_async_narrator,
 )
-from creatures import CreatureManager, MARKER_DINO_SPAWN, MARKER_EXTINCTION
+from bridge import AppBridge
+from buttons import BUTTON_ACTIONS, ButtonInput, button_for_key, button_label
+from classroom import (
+    DONE_LABEL,
+    LANGUAGES,
+    TEAM_LABEL,
+    LessonPlayer,
+    Scoreboard,
+    draw_lesson,
+    draw_scoreboard,
+    load_lessons,
+    localized,
+    measure,
+)
+from creatures import MARKER_DINO_SPAWN, MARKER_EXTINCTION, CreatureManager
 from day_night import DayNightCycle
+from dem_loader import export_snapshot, list_snapshots, load_snapshot
+from depth_relay import DepthRelay
+from depth_server import DepthStreamServer
+from diagnostics import show_startup_diagnostics
+from earthquake import EarthquakeDetector
 from ecosystem import EcosystemManager
-# from depth_source import MouseSimulator
-from sensor_api import create_sensor
-from dem_loader import save_terrain_snapshot
+from game_modes import BUILTIN_TARGETS, GameManager
+from health import SurfaceHealth
 from interaction_engine import InteractionEngine
-from renderer import Renderer
-from game_modes import GameManager
+from kiosk import Kiosk, SensorReconnector, parse_hours
+from renderer import WATER_LEVEL, Renderer
+
+# from depth_source import MouseSimulator
+from sensor_api import create_exact, create_sensor
 from sounds import SoundManager
-from ui import Config, Sidebar, draw_guide_overlay
+from timelapse import TimelapseRecorder
+from ui import (
+    SCHEMES,
+    SMOOTHING_LABELS,
+    Config,
+    Sidebar,
+    apply_smoothing_preset,
+    draw_guide_overlay,
+    smoothing_preset_of,
+)
+from volcano import (
+    MARKER_VOLCANO_PLACE,
+    MARKER_VOLCANO_TRIGGER,
+    VolcanoManager,
+)
 from webcam_observer import (
     AsyncCameraDiscovery,
     AsyncCameraTester,
     CalibrationData,
     WebcamObserver,
 )
-from bridge import AppBridge
-from depth_server import DepthStreamServer
-from volcano import (
-    MARKER_VOLCANO_PLACE,
-    MARKER_VOLCANO_TRIGGER,
-    VolcanoManager,
-)
-from earthquake import EarthquakeDetector
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +103,48 @@ BRUSH_DEFAULT = 50
 BRUSH_DELTA   = 0.012
 MAX_RENDER_W  = 960
 MAX_RENDER_H  = 720
+
+# Dashboard commands forwarded to DuneBox (C++) over the bridge, with the
+# confirmation shown to the operator. The C++ side maps each to its key handler.
+DUNEBOX_COMMANDS = {
+    "toggle_water": "Water simulation toggled",
+    "toggle_lava": "Lava mode toggled",
+    "erupt_volcano": "Volcano erupting",
+    "cycle_theme": "Theme changed",
+    "toggle_day_night": "Day/night toggled",
+    "start_app": "Asked DuneBox to start",
+    "dry_water": "Water drained",
+    "set_evaporation": "Evaporation updated",
+    "toggle_hand_rain": "Hand rain toggled",
+    "toggle_erosion": "Erosion view toggled",
+    "detect_sand_region": "Detecting the sand area",
+    "calibrate_projector": "Calibrating the projector",
+    "full_calibration": "Full calibration started",
+    "calibration_confirm": "Confirmed",
+    "calibration_cancel": "Calibration cancelled",
+}
+EVAPORATION_LEVELS = ("off", "slow", "fast")
+SIMULATED_SENSORS = ("mouse_simulator", "dummy")
+
+
+def _is_simulated(source) -> bool:
+    return source.get_sensor_name().startswith(("Mouse", "Dummy"))
+
+
+def _as_float(value: object) -> float | None:
+    try:
+        num = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return num if np.isfinite(num) else None
+
+
+def _toggle_timelapse(timelapse: TimelapseRecorder) -> str:
+    if timelapse.active:
+        folder, frames = timelapse.stop()
+        return f"Timelapse stopped: {frames} frames in {folder.name if folder else '?'}"
+    folder = timelapse.start()
+    return f"Timelapse recording every {timelapse.interval:.0f}s to {folder.name}"
 
 
 def _draw_startup_screen(
@@ -384,15 +454,75 @@ def main() -> int:
         host=config.depth_server_host,
         port=config.depth_server_port,
         max_fps=config.depth_server_max_fps,
+        pin=config.dashboard_pin,
     )
     depth_server_enabled = config.depth_server_enabled
     if depth_server_enabled:
         depth_server.start()
+    depth_relay = DepthRelay()
+    if config.depth_relay_enabled:
+        depth_relay.start()
+    # Latest state reported by DuneBox (C++) over the bridge, for the dashboard.
+    dunebox_state: dict | None = None
+    dunebox_state_time = 0.0
     volcano_mgr = VolcanoManager(render_w, render_h)
     volcano_place_mode = False  # 'O' key toggles placement mode
     earthquake_det = EarthquakeDetector(render_w, render_h)
     eco_mgr = EcosystemManager(render_w, render_h)
     eco_enabled = False
+    timelapse = TimelapseRecorder(interval=config.timelapse_interval_s)
+    surface_health = SurfaceHealth()
+    kiosk = Kiosk(
+        enabled=config.kiosk_schedule,
+        hours=config.kiosk_hours,
+        days=config.kiosk_days,
+        projector_host=config.projector_host,
+        projector_password=config.projector_password,
+    )
+
+    def _connect_configured_sensor():
+        return create_exact(
+            config.sensor_type,
+            width=render_w,
+            height=render_h,
+            min_depth_mm=config.min_depth_mm,
+            max_depth_mm=config.max_depth_mm,
+            temporal_alpha=config.temporal_alpha,
+            change_threshold_mm=config.change_threshold_mm,
+            persistence_frames=config.persistence_frames,
+            foreground_reject_mm=config.foreground_reject_mm,
+        )
+
+    reconnector = SensorReconnector(_connect_configured_sensor)
+    button_input = ButtonInput(
+        config.button_map, serial_enabled=config.buttons_serial, port=config.buttons_port
+    )
+    lessons = LessonPlayer(load_lessons())
+    lesson_checked = 0.0
+    scoreboard = Scoreboard()
+
+    def apply_lesson_settings(settings: dict) -> None:
+        if settings.get("theme") in SCHEMES:
+            config.colour_scheme = settings["theme"]
+        if "contours" in settings:
+            config.show_contours = bool(settings["contours"])
+        if "contour_labels" in settings:
+            config.contour_labels = bool(settings["contour_labels"])
+        if (interval := _as_float(settings.get("contour_interval"))) is not None:
+            config.contour_interval = max(0.02, min(0.12, interval))
+        if (sea := _as_float(settings.get("sea_level"))) is not None:
+            config.sea_level_offset = max(-0.2, min(0.2, sea))
+        if "creatures" in settings:
+            config.show_creatures = bool(settings["creatures"])
+        game = str(settings.get("game") or "")
+        if game.startswith("challenge:"):
+            game_mgr.start_game("challenge", source.get_frame(), target=game.split(":", 1)[1])
+        elif game in GameManager.get_mode_names():
+            game_mgr.start_game(game, source.get_frame())
+        config.request_save()
+    snapshots: list[dict] = []
+    snapshots_dirty = True
+    snapshots_checked = 0.0
     app_start_time = time.monotonic()
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
@@ -407,7 +537,23 @@ def main() -> int:
     try:
         running = True
         while running:
-            dt = clock.tick(FPS) / 1000.0
+            # Outside opening hours the screen is black, so idle at a low rate
+            dt = clock.tick(FPS if not kiosk.asleep else 10) / 1000.0
+            kiosk.update(datetime.now())
+
+            if config.sensor_auto_reconnect and config.sensor_type not in SIMULATED_SENSORS:
+                fresh = reconnector.poll(
+                    time.monotonic(), source, simulated=_is_simulated(source)
+                )
+                if fresh is not None:
+                    old_source, source = source, fresh
+                    try:
+                        old_source.close()
+                    except Exception:
+                        logger.exception("Closing the previous sensor failed")
+                    logger.info("Sensor connected: %s", source.get_sensor_name())
+                    status_flash_text = f"{source.get_sensor_name()} connected"
+                    status_flash_timer = 3.0
 
             # ── events ────────────────────────────────────────────────────────
             for event in pygame.event.get():
@@ -415,10 +561,25 @@ def main() -> int:
                     running = False
                     continue
 
+                if kiosk.asleep and event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                    kiosk.wake()
+                    continue
+
                 # Sidebar gets first look at every event
                 consumed = sidebar.handle_event(event, config)
                 if consumed:
                     continue
+
+                if event.type == pygame.KEYDOWN:
+                    button = button_for_key(pygame.key.name(event.key))
+                    if button is not None:
+                        button_input.press(button)
+                        continue
+                    # Presentation clickers send Page Up / Page Down
+                    if lessons.lesson and event.key in (pygame.K_PAGEDOWN, pygame.K_PAGEUP):
+                        step = 1 if event.key == pygame.K_PAGEDOWN else -1
+                        apply_lesson_settings(lessons.go(lessons.index + step))
+                        continue
 
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_q):
@@ -455,11 +616,19 @@ def main() -> int:
                         config.request_save()
                     elif event.key == pygame.K_F5:
                         try:
-                            saved = save_terrain_snapshot(source.get_frame())
-                            status_flash_text = f"Saved: {saved.name}"
-                        except Exception as exc:
+                            saved = export_snapshot(
+                                source.get_frame(),
+                                depth_range_mm=(config.min_depth_mm, config.max_depth_mm),
+                                image=scene,
+                            )
+                            snapshots_dirty = True
+                            status_flash_text = f"Saved: {saved[0].stem} (.npy .asc .png)"
+                        except (OSError, ValueError, pygame.error) as exc:
                             status_flash_text = f"Save failed: {exc}"
                         status_flash_timer = 2.5
+                    elif event.key == pygame.K_t:
+                        status_flash_text = _toggle_timelapse(timelapse)
+                        status_flash_timer = 3.0
                     elif event.key == pygame.K_b:
                         bridge_enabled = not bridge_enabled
                         if bridge_enabled:
@@ -486,8 +655,11 @@ def main() -> int:
                         config.depth_server_enabled = depth_server_enabled
                         if depth_server_enabled:
                             depth_server.start()
+                            status_flash_text = f"Dashboard: {depth_server.dashboard_url()}"
                         else:
                             depth_server.stop()
+                            status_flash_text = "Dashboard off"
+                        status_flash_timer = 4.0
                         config.request_save()
                     elif event.key == pygame.K_o:
                         volcano_place_mode = not volcano_place_mode
@@ -670,6 +842,25 @@ def main() -> int:
 
             # ── render ────────────────────────────────────────────────────────
             frame = source.get_frame()
+            surface_health.update(
+                time.monotonic(), frame, config.max_depth_mm - config.min_depth_mm
+            )
+            if depth_relay.client_count:
+                relay_color = None
+                if depth_relay.wants_color:
+                    try:
+                        relay_color = source.get_aligned_color_frame()
+                    except Exception:
+                        logger.debug("No colour for the depth relay", exc_info=True)
+                depth_relay.publish(
+                    frame, config.min_depth_mm, config.max_depth_mm,
+                    "simulated" if _is_simulated(source) else config.sensor_type,
+                    relay_color,
+                )
+            if frame is not None and config.sea_level_offset:
+                # Raising the sea is the same as lowering every height, so
+                # water, creatures, games and the dashboard all stay in step.
+                frame = np.clip(frame - config.sea_level_offset, 0.0, 1.0).astype(np.float32)
 
             # Day/night cycle
             light_tint = None
@@ -716,7 +907,12 @@ def main() -> int:
             renderer.draw(scene, frame,
                           show_contours=config.show_contours,
                           colour_scheme=config.colour_scheme,
-                          light_tint=light_tint)
+                          light_tint=light_tint,
+                          contour_interval=config.contour_interval,
+                          contour_labels_cm_per_unit=(
+                              (config.max_depth_mm - config.min_depth_mm) / 10.0
+                              if config.contour_labels else None
+                          ))
 
             # Sky effects (stars, moon, sun) — after terrain, before creatures
             if day_night_enabled:
@@ -842,68 +1038,433 @@ def main() -> int:
                         new_scheme = bmsg.get("theme", "")
                         if new_scheme in ("terrain", "heat", "greyscale", "desert"):
                             config.colour_scheme = new_scheme
-                    elif btype == "water_status":
-                        pass  # could display as HUD overlay
+                    elif btype == "dunebox_state":
+                        dunebox_state = {k: v for k, v in bmsg.items() if k != "type"}
+                        dunebox_state_time = time.monotonic()
 
             # ── depth server: push frame + state to WebSocket clients ─────
             if depth_server_enabled:
+                if snapshots_dirty or time.monotonic() - snapshots_checked > 10.0:
+                    snapshots = [
+                        {"name": s["name"], "files": s["files"], "time": round(s["time"])}
+                        for s in list_snapshots(8)
+                    ]
+                    snapshots_dirty = False
+                    snapshots_checked = time.monotonic()
                 depth_server.push_frame(frame)
                 creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
-                _game_info = game_mgr.get_status()
+                sensor_name = source.get_sensor_name()
+                simulated = _is_simulated(source)
+                bridge_up = bridge_enabled and app_bridge.is_connected()
+                if dunebox_state is not None and (
+                    not bridge_up or time.monotonic() - dunebox_state_time > 5.0
+                ):
+                    dunebox_state = None
                 depth_server.push_state({
                     "fps": round(clock.get_fps(), 1),
+                    "theme": config.colour_scheme,
+                    "themes": list(SCHEMES),
+                    "contours": config.show_contours,
+                    "contour_interval": config.contour_interval,
+                    "contour_labels": config.contour_labels,
+                    "sea_level_offset": config.sea_level_offset,
+                    "smoothing": smoothing_preset_of(config),
+                    "below_sea_level": (
+                        round(float(np.mean(frame < WATER_LEVEL)), 3) if frame is not None else 0.0
+                    ),
                     "creatures": {
+                        "enabled": config.show_creatures,
+                        "set": creatures.creature_set,
                         "total": sum(creature_counts.values()),
                         **creature_counts,
                     },
-                    "theme": config.colour_scheme,
-                    "water_enabled": config.show_contours,
-                    "water_coverage": float(np.mean(frame < 0.38)) if frame is not None else 0.0,
-                    "lava_active": volcano_mgr.is_erupting(),
+                    "ecosystem": eco_enabled,
+                    "volcano": {
+                        "count": volcano_mgr.count(),
+                        "erupting": volcano_mgr.is_erupting(),
+                    },
                     "sound_muted": not config.sound_enabled,
                     "day_night": {
                         "enabled": day_night_enabled,
+                        "paused": day_night.is_paused(),
+                        "speed": round(day_night.get_speed(), 2),
                         "phase": day_night.get_phase() if day_night_enabled else "",
                         "time": round(day_night.get_time_of_day(), 3) if day_night_enabled else 0.0,
                     },
-                    "game": _game_info,
+                    "game": game_mgr.get_status(),
+                    "games": GameManager.get_mode_names(),
+                    "challenge_targets": BUILTIN_TARGETS,
+                    "snapshots": snapshots,
+                    "can_load_terrain": hasattr(source, "load_terrain"),
+                    "timelapse": {
+                        "active": timelapse.active,
+                        "frames": timelapse.frames,
+                        "interval": timelapse.interval,
+                        "folder": timelapse.folder.name if timelapse.folder else "",
+                    },
                     "sensor": {
-                        "type": source.get_sensor_name(),
-                        "connected": True,
+                        "name": sensor_name,
+                        "configured": config.sensor_type,
+                        "connected": source.is_connected(),
+                        "simulated": simulated,
+                        "can_calibrate": hasattr(source, "auto_calibrate_flat_surface"),
+                        "can_reset": hasattr(source, "reset"),
+                        "depth_mm": [config.min_depth_mm, config.max_depth_mm],
+                        **surface_health.as_dict(),
+                        "auto_reconnect": config.sensor_auto_reconnect,
+                        "reconnect_attempts": reconnector.attempts,
+                    },
+                    "kiosk": kiosk.status(datetime.now()),
+                    "buttons": button_input.status(),
+                    "classroom": {
+                        "lessons": lessons.status(config.language),
+                        "scoreboard": scoreboard.status(),
+                        "language": config.language,
+                        "languages": LANGUAGES,
+                    },
+                    "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
+                    "relay": depth_relay.status(),
+                    "dunebox": dunebox_state,
+                    "dashboard": {
+                        "url": depth_server.dashboard_url(),
+                        "lan": depth_server.lan_enabled,
                     },
                     "clients": depth_server.get_client_count(),
                     "uptime": round(time.monotonic() - app_start_time, 1),
                 })
 
-                # ── process dashboard commands ────────────────────────
-                for cmd in depth_server.poll_commands():
-                    action = cmd.get("action", "")
-                    value = cmd.get("value")
-                    if action == "set_theme":
-                        if value in ("terrain", "heat", "greyscale", "desert"):
-                            config.colour_scheme = value
+            # ── commands: dashboard and physical buttons ──────────────
+            # Dashboard commands are acknowledged with {"type": "ack", "id", "ok",
+            # "message"} so it can confirm or explain the result; button presses
+            # flash their result on the sand and show in the dashboard's activity.
+            commands = depth_server.poll_commands() if depth_server_enabled else []
+            commands += button_input.poll()
+            if commands:
+                sensor_name = source.get_sensor_name()
+                bridge_up = bridge_enabled and app_bridge.is_connected()
+            for cmd in commands:
+                action = str(cmd.get("action", ""))
+                value = cmd.get("value")
+                target = cmd.get("target", "sandcam")
+                ok, message = True, ""
+
+                if target == "dunebox":
+                    if not bridge_up:
+                        ok, message = False, "DuneBox (C++) isn't connected. Start it on this PC."
+                    elif action not in DUNEBOX_COMMANDS:
+                        ok, message = False, f"Unknown DuneBox command: {action}"
+                    elif action == "set_evaporation" and value not in EVAPORATION_LEVELS:
+                        ok, message = False, f"Unknown evaporation level: {value}"
+                    else:
+                        bmsg_out = {"type": "command", "action": action}
+                        if value is not None:
+                            bmsg_out["value"] = value
+                        app_bridge.send(bmsg_out)
+                        message = DUNEBOX_COMMANDS[action]
+                elif action == "set_theme":
+                    if value in SCHEMES:
+                        config.colour_scheme = value
+                        config.request_save()
+                        message = f"Theme: {value}"
+                    else:
+                        ok, message = False, f"Unknown theme: {value}"
+                elif action == "toggle_contours":
+                    config.show_contours = not config.show_contours
+                    config.request_save()
+                    message = f"Contour lines {'on' if config.show_contours else 'off'}"
+                elif action == "toggle_contour_labels":
+                    config.contour_labels = not config.contour_labels
+                    config.request_save()
+                    message = f"Elevation labels {'on' if config.contour_labels else 'off'}"
+                elif action == "set_contour_interval":
+                    num = _as_float(value)
+                    if num is None or not 0.02 <= num <= 0.12:
+                        ok, message = False, "Contour spacing must be between 2% and 12%"
+                    else:
+                        config.contour_interval = num
+                        config.request_save()
+                        message = f"Contour spacing {num * 100:.0f}%"
+                elif action == "set_sea_level":
+                    num = _as_float(value)
+                    if num is None or not -0.2 <= num <= 0.2:
+                        ok, message = False, "Sea level must be between -20% and +20%"
+                    else:
+                        config.sea_level_offset = num
+                        config.request_save()
+                        message = f"Sea level {num * 100:+.0f}%"
+                elif action == "set_smoothing":
+                    if apply_smoothing_preset(config, str(value)):
+                        message = f"Smoothing: {SMOOTHING_LABELS[str(value)]}"
+                    else:
+                        ok, message = False, f"Unknown smoothing preset: {value}"
+                elif action == "toggle_creatures":
+                    config.show_creatures = not config.show_creatures
+                    config.request_save()
+                    message = f"Creatures {'on' if config.show_creatures else 'off'}"
+                elif action == "cycle_creature_set":
+                    message = f"Creature set: {creatures.cycle_creature_set()}"
+                elif action == "toggle_ecosystem":
+                    eco_enabled = not eco_enabled
+                    eco_mgr.set_enabled(eco_enabled)
+                    message = f"Ecosystem {'on' if eco_enabled else 'off'}"
+                elif action == "toggle_sound":
+                    muted = sound_mgr.toggle_mute()
+                    config.sound_enabled = not muted
+                    config.request_save()
+                    message = "Sound muted" if muted else "Sound on"
+                elif action == "toggle_day_night":
+                    day_night_enabled = not day_night_enabled
+                    if not day_night_enabled:
+                        prev_day_night_phase = ""
+                    message = f"Day/night cycle {'on' if day_night_enabled else 'off'}"
+                elif action == "pause_day_night":
+                    day_night.toggle_pause()
+                    message = "Cycle paused" if day_night.is_paused() else "Cycle resumed"
+                elif action == "cycle_speed":
+                    delta = 0.5 if value == "up" else -0.5
+                    message = f"Cycle speed {day_night.adjust_speed(delta):.1f}x"
+                elif action == "erupt_volcano":
+                    idx = volcano_mgr.place_volcano(render_w // 2, render_h // 2)
+                    volcano_mgr.trigger_eruption(idx)
+                    message = "Volcano erupting at the centre"
+                elif action == "trigger_earthquake":
+                    earthquake_det.force_trigger(render_w // 2, render_h // 2)
+                    message = "Earthquake triggered"
+                elif action == "start_game":
+                    if value in GameManager.get_available_modes():
+                        game_mgr.start_game(value, source.get_frame())
+                        message = f"Started {GameManager.get_mode_names()[value]}"
+                    else:
+                        ok, message = False, f"Unknown game: {value}"
+                elif action == "end_game":
+                    if game_mgr.is_active():
+                        game_mgr.end_game()
+                        message = "Game ended"
+                    else:
+                        ok, message = False, "No game is running"
+                elif action == "save_snapshot":
+                    try:
+                        saved = export_snapshot(
+                            source.get_frame(),
+                            depth_range_mm=(config.min_depth_mm, config.max_depth_mm),
+                            image=scene,
+                        )
+                        snapshots_dirty = True
+                        message = f"Saved {saved[0].stem} (terrain, DEM and image)"
+                    except (OSError, ValueError, pygame.error) as exc:
+                        ok, message = False, f"Couldn't save snapshot: {exc}"
+                elif action == "load_snapshot":
+                    try:
+                        data = load_snapshot(str(value))
+                    except (OSError, ValueError) as exc:
+                        ok, message = False, f"Couldn't load terrain: {exc}"
+                    else:
+                        if hasattr(source, "load_terrain"):
+                            source.load_terrain(data)
+                            message = f"Loaded {value} into the simulator"
+                        else:
+                            game_mgr.start_game(
+                                "challenge", source.get_frame(),
+                                target=data, target_name=f"Saved {str(value)[8:]}",
+                            )
+                            message = f"Rebuild {value}: dig red areas, fill blue ones"
+                elif action == "start_challenge":
+                    if value in BUILTIN_TARGETS:
+                        game_mgr.start_game("challenge", source.get_frame(), target=value)
+                        message = f"Terrain challenge: {BUILTIN_TARGETS[value]}"
+                    else:
+                        try:
+                            data = load_snapshot(str(value))
+                        except (OSError, ValueError) as exc:
+                            ok, message = False, f"Couldn't load terrain: {exc}"
+                        else:
+                            game_mgr.start_game(
+                                "challenge", source.get_frame(),
+                                target=data, target_name=f"Saved {str(value)[8:]}",
+                            )
+                            message = f"Terrain challenge: rebuild {value}"
+                elif action == "toggle_timelapse":
+                    try:
+                        message = _toggle_timelapse(timelapse)
+                    except OSError as exc:
+                        ok, message = False, f"Couldn't start timelapse: {exc}"
+                elif action == "toggle_schedule":
+                    config.kiosk_schedule = not config.kiosk_schedule
+                    kiosk.configure(enabled=config.kiosk_schedule)
+                    config.request_save()
+                    message = f"Opening hours {'on' if config.kiosk_schedule else 'off'}"
+                elif action == "set_hours":
+                    if isinstance(value, str) and parse_hours(value):
+                        config.kiosk_hours = value
+                        kiosk.configure(hours=value)
+                        config.request_save()
+                        message = f"Open {value.replace('-', '–')}"
+                    else:
+                        ok, message = False, "Opening must be before closing, as HH:MM-HH:MM"
+                elif action == "set_days":
+                    days = "".join(sorted(set(str(value or "")) & set("0123456")))
+                    if days:
+                        config.kiosk_days = days
+                        kiosk.configure(days=days)
+                        config.request_save()
+                        message = "Open days updated"
+                    else:
+                        ok, message = False, "Pick at least one day"
+                elif action == "wake":
+                    kiosk.wake()
+                    message = "Awake until the next opening or closing time"
+                elif action == "set_projector_host":
+                    host = str(value or "").strip()
+                    if host and not re.fullmatch(r"[A-Za-z0-9.\-:]{1,253}", host):
+                        ok, message = False, f"Not an IP address or host name: {host}"
+                    else:
+                        config.projector_host = host
+                        kiosk.set_projector_host(host, config.projector_password)
+                        config.request_save()
+                        message = f"Projector: {host}" if host else "Projector control off"
+                elif action == "projector_power":
+                    if value not in ("on", "off"):
+                        ok, message = False, f"Unknown projector power: {value}"
+                    elif not kiosk.set_projector(value == "on"):
+                        ok, message = False, "Add the projector's IP address first"
+                    else:
+                        message = f"Turning the projector {value}"
+                elif action == "toggle_auto_reconnect":
+                    config.sensor_auto_reconnect = not config.sensor_auto_reconnect
+                    config.request_save()
+                    message = f"Sensor auto-reconnect {'on' if config.sensor_auto_reconnect else 'off'}"
+                elif action == "calibrate_depth":
+                    if not hasattr(source, "auto_calibrate_flat_surface"):
+                        ok, message = False, f"{sensor_name} can't auto-calibrate depth"
+                    else:
+                        result = source.auto_calibrate_flat_surface()
+                        if result:
+                            config.min_depth_mm, config.max_depth_mm = result
+                            config.depth_range_changed = True
                             config.request_save()
-                    elif action == "toggle_water":
-                        config.show_contours = not config.show_contours
+                            message = f"Depth calibrated: {result[0]}-{result[1]} mm"
+                        else:
+                            ok, message = False, "No valid depth. Flatten the sand and clear hands away, then retry."
+                elif action == "cycle_theme":
+                    idx = SCHEMES.index(config.colour_scheme) if config.colour_scheme in SCHEMES else -1
+                    config.colour_scheme = SCHEMES[(idx + 1) % len(SCHEMES)]
+                    config.request_save()
+                    message = f"Theme: {config.colour_scheme}"
+                elif action == "nudge_sea_level":
+                    step = _as_float(value)
+                    if step is None:
+                        ok, message = False, "Sea level step must be a number"
+                    else:
+                        config.sea_level_offset = round(
+                            max(-0.2, min(0.2, config.sea_level_offset + step)), 3
+                        )
                         config.request_save()
-                    elif action == "toggle_lava":
-                        pass  # lava not yet implemented as a toggle
-                    elif action == "toggle_sound":
-                        muted = sound_mgr.toggle_mute()
-                        config.sound_enabled = not muted
+                        message = f"Sea level {config.sea_level_offset * 100:+.0f}%"
+                elif action == "set_button_action":
+                    button = str(cmd.get("button") or "")
+                    if button_input.set_mapping(button, str(value)):
+                        config.button_map = dict(button_input.mapping)
                         config.request_save()
-                    elif action == "toggle_day_night":
-                        day_night_enabled = not day_night_enabled
-                        if not day_night_enabled:
-                            prev_day_night_phase = ""
-                    elif action == "cycle_speed":
-                        if value == "up":
-                            day_night.adjust_speed(+0.5)
-                        elif value == "down":
-                            day_night.adjust_speed(-0.5)
-                    elif action == "start_game":
-                        if value in GameManager.get_available_modes():
-                            game_mgr.start_game(value, source.get_frame())
+                        message = f"{button_label(button)}: {BUTTON_ACTIONS[str(value)][0]}"
+                    else:
+                        ok, message = False, f"Unknown button action: {value}"
+                elif action == "toggle_button_serial":
+                    config.buttons_serial = not config.buttons_serial
+                    button_input.configure_serial(config.buttons_serial, config.buttons_port)
+                    config.request_save()
+                    message = f"Arduino buttons {'on' if config.buttons_serial else 'off'}"
+                elif action == "toggle_depth_relay":
+                    if depth_relay.running:
+                        depth_relay.stop()
+                        config.depth_relay_enabled = False
+                        message = "Stopped sharing the sensor"
+                    elif depth_relay.start():
+                        config.depth_relay_enabled = True
+                        message = "Sharing the sensor with DuneBox"
+                    else:
+                        ok, message = False, depth_relay.error
+                    config.request_save()
+                elif action == "start_lesson":
+                    settings = lessons.start(str(value))
+                    if settings is None:
+                        ok, message = False, f"Unknown lesson: {value}"
+                    else:
+                        apply_lesson_settings(settings)
+                        message = f"Lesson: {localized(lessons.lesson.title, config.language)}"
+                elif action == "lesson_step":
+                    if lessons.lesson is None:
+                        ok, message = False, "No lesson is running"
+                    else:
+                        target_step = lessons.index + (1 if value == "next" else -1 if value == "prev" else 0)
+                        if isinstance(value, int) and not isinstance(value, bool):
+                            target_step = value
+                        apply_lesson_settings(lessons.go(target_step))
+                        message = f"Step {lessons.index + 1} of {len(lessons.lesson.steps)}"
+                elif action == "stop_lesson":
+                    lessons.stop()
+                    message = "Lesson ended"
+                elif action == "set_language":
+                    if value in LANGUAGES:
+                        config.language = value
+                        config.request_save()
+                        message = f"Language on the sand: {LANGUAGES[value]}"
+                    else:
+                        ok, message = False, f"Unsupported language: {value}"
+                elif action == "set_teams":
+                    count = _as_float(value)
+                    if count is None:
+                        ok, message = False, "Number of teams must be a number"
+                    else:
+                        scoreboard.set_count(int(count), localized(TEAM_LABEL, config.language))
+                        message = f"{len(scoreboard.teams)} teams" if scoreboard.teams else "Scoreboard off"
+                elif action == "team_points":
+                    team = value.get("team") if isinstance(value, dict) else None
+                    points = _as_float(value.get("points")) if isinstance(value, dict) else None
+                    if not isinstance(team, int) or points is None or not scoreboard.add(team, int(points)):
+                        ok, message = False, "Couldn't change that team's score"
+                    else:
+                        message = f"{scoreboard.teams[team]['name']}: {scoreboard.teams[team]['score']}"
+                elif action == "rename_team":
+                    team = value.get("team") if isinstance(value, dict) else None
+                    name = str(value.get("name", "")) if isinstance(value, dict) else ""
+                    if not isinstance(team, int) or not scoreboard.rename(team, name):
+                        ok, message = False, "Team names can't be empty"
+                    else:
+                        message = f"Renamed to {scoreboard.teams[team]['name']}"
+                elif action == "award_game":
+                    team = value if isinstance(value, int) and not isinstance(value, bool) else -1
+                    points = scoreboard.award(team)
+                    if points is None:
+                        ok, message = False, "No game score to award"
+                    else:
+                        message = f"{points} points to {scoreboard.teams[team]['name']}"
+                elif action == "reset_scores":
+                    scoreboard.reset()
+                    message = "Scores reset"
+                elif action == "toggle_scoreboard":
+                    scoreboard.visible = not scoreboard.visible
+                    message = f"Scoreboard {'shown' if scoreboard.visible else 'hidden'} on the sand"
+                elif action == "reset_terrain":
+                    if hasattr(source, "reset"):
+                        source.reset()
+                        message = "Terrain reset"
+                    else:
+                        ok, message = False, "Only the simulator terrain can be reset"
+                else:
+                    ok, message = False, f"Unknown command: {action}"
+
+                if cmd.get("source") == "button":
+                    status_flash_text = cmd["label"] if ok else message
+                    status_flash_timer = 2.0
+                    if depth_server_enabled:
+                        depth_server.push_event({
+                            "type": "activity", "ok": ok,
+                            "text": f"{button_label(cmd['button'])}: {message or cmd['label']}",
+                        })
+                elif depth_server_enabled:
+                    depth_server.push_event({
+                        "type": "ack", "id": cmd.get("id"), "ok": ok, "message": message,
+                    })
 
             guide_message = None
             active_challenge = None
@@ -940,6 +1501,8 @@ def main() -> int:
             shake_dx = v_shake_dx + eq_shake_dx
             shake_dy = v_shake_dy + eq_shake_dy
 
+            timelapse.update(time.monotonic(), scene)
+
             if scene.get_size() == screen.get_size():
                 screen.blit(scene, (shake_dx, shake_dy))
             else:
@@ -962,6 +1525,20 @@ def main() -> int:
             pygame.draw.circle(screen, (255, 255, 255), (mx, my), brush_radius, 1)
 
             # ── DEM flash notification ────────────────────────────────────
+            scoreboard.note_game(game_mgr.get_status())
+            flash_y = 30
+            if lessons.lesson is not None:
+                if time.monotonic() - lesson_checked > 1.0:
+                    lesson_checked = time.monotonic()
+                    if lessons.update(measure(frame, WATER_LEVEL)):
+                        status_flash_text = localized(DONE_LABEL, config.language)
+                        status_flash_timer = 2.0
+                flash_y = 12 + draw_lesson(
+                    screen, lessons.active_status(config.language), config.language
+                )
+            if scoreboard.visible and scoreboard.teams:
+                draw_scoreboard(screen, scoreboard.teams)
+
             if status_flash_timer > 0:
                 status_flash_timer -= dt
                 flash_alpha = min(255, int(255 * min(1.0, status_flash_timer / 0.3)))
@@ -969,7 +1546,7 @@ def main() -> int:
                 flash_surf.set_alpha(flash_alpha)
                 screen.blit(
                     flash_surf,
-                    (screen.get_width() // 2 - flash_surf.get_width() // 2, 30),
+                    (screen.get_width() // 2 - flash_surf.get_width() // 2, flash_y),
                 )
 
             creatures_state = "on" if config.show_creatures else "off"
@@ -1021,6 +1598,9 @@ def main() -> int:
             sidebar.update(dt)
             sidebar.draw(screen, config)
 
+            if kiosk.asleep:
+                screen.fill((0, 0, 0))
+
             pygame.display.flip()
     finally:
         try:
@@ -1061,6 +1641,12 @@ def main() -> int:
             depth_server.stop()
         except Exception:
             logger.exception("Failed to stop depth server during shutdown")
+        try:
+            timelapse.stop()
+            button_input.close()
+            depth_relay.stop()
+        except Exception:
+            logger.exception("Failed to stop timelapse, buttons or depth relay during shutdown")
         try:
             if hasattr(source, "close"):
                 source.close()

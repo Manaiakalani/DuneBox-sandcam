@@ -144,7 +144,7 @@ class AppBridge:
                 self._conn_sock = conn
                 self._connected_event.set()
                 self._service_connection()
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 if self._running:

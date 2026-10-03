@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T03:38:00-07:00",
+  "title": "Design System: DuneBox",
+  "extensions": {
+    "colorMeta": {
+      "bg": { "role": "neutral", "displayName": "Projector Black", "canonical": "#0a0a0a", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "surface": { "role": "neutral", "displayName": "Panel", "canonical": "#111111", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "surface-2": { "role": "neutral", "displayName": "Raised", "canonical": "#171717", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "surface-3": { "role": "neutral", "displayName": "Pressed / Selected", "canonical": "#1f1f1f", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "#262626", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "border-strong": { "role": "neutral", "displayName": "Strong Hairline", "canonical": "#3a3a3a", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "text": { "role": "neutral", "displayName": "Ink", "canonical": "#ededed", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "text-2": { "role": "neutral", "displayName": "Muted Ink", "canonical": "#a1a1a1", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#a1a1a1", "#ededed"] },
+      "text-3": { "role": "neutral", "displayName": "Faint Ink", "canonical": "#8a8a8a", "tonalRamp": ["#0a0a0a", "#111111", "#171717", "#1f1f1f", "#262626", "#3a3a3a", "#8a8a8a", "#ededed"] },
+      "accent": { "role": "primary", "displayName": "Signal Blue", "canonical": "#52a8ff", "tonalRamp": ["#0a2540", "#0f3a66", "#15508c", "#1f6bb8", "#3a8ce6", "#52a8ff", "#8fc6ff", "#d6eaff"] },
+      "accent-bg": { "role": "primary", "displayName": "Signal Blue Wash", "canonical": "rgba(82, 168, 255, 0.14)", "tonalRamp": ["#0a2540", "#0f3a66", "#15508c", "#1f6bb8", "#3a8ce6", "#52a8ff", "#8fc6ff", "#d6eaff"] },
+      "accent-border": { "role": "primary", "displayName": "Signal Blue Edge", "canonical": "rgba(82, 168, 255, 0.45)", "tonalRamp": ["#0a2540", "#0f3a66", "#15508c", "#1f6bb8", "#3a8ce6", "#52a8ff", "#8fc6ff", "#d6eaff"] },
+      "ok": { "role": "status", "displayName": "Healthy Green", "canonical": "#3fcf8e", "tonalRamp": ["#06291a", "#0b4229", "#115c3a", "#19784c", "#2aa36b", "#3fcf8e", "#86e3b8", "#d3f6e5"] },
+      "warn": { "role": "status", "displayName": "Attention Amber", "canonical": "#f5a524", "tonalRamp": ["#3a2405", "#5c3907", "#80500a", "#a86a0f", "#d1861a", "#f5a524", "#f9c56e", "#fde9c4"] },
+      "warn-bg": { "role": "status", "displayName": "Attention Wash", "canonical": "rgba(245, 165, 36, 0.1)", "tonalRamp": ["#3a2405", "#5c3907", "#80500a", "#a86a0f", "#d1861a", "#f5a524", "#f9c56e", "#fde9c4"] },
+      "err": { "role": "status", "displayName": "Fault Red", "canonical": "#ff6166", "tonalRamp": ["#3d0e10", "#5e1518", "#821e22", "#a82a2f", "#d6434a", "#ff6166", "#ff9a9d", "#ffd9da"] },
+      "err-bg": { "role": "status", "displayName": "Fault Wash", "canonical": "rgba(255, 97, 102, 0.1)", "tonalRamp": ["#3d0e10", "#5e1518", "#821e22", "#a82a2f", "#d6434a", "#ff6166", "#ff9a9d", "#ffd9da"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "PIN gate title; the one standalone heading." },
+      "title-lg": { "displayName": "Title Large", "purpose": "DuneBox wordmark in the top bar." },
+      "title": { "displayName": "Title", "purpose": "Section heads, group legends, popover titles; body size at 600." },
+      "body": { "displayName": "Body", "purpose": "Row labels, banners, popover copy, toasts." },
+      "control": { "displayName": "Control", "purpose": "Button labels." },
+      "body-sm": { "displayName": "Body Small", "purpose": "Meta lines, hints, field labels, status pills, segmented options." },
+      "label": { "displayName": "Label", "purpose": "Fact and stat captions." },
+      "numeric": { "displayName": "Numeric", "purpose": "Live facts; Geist Mono, tabular figures." },
+      "numeric-lg": { "displayName": "Numeric Large", "purpose": "Game score/time, PIN entry and display." }
+    },
+    "shadows": [
+      { "name": "float", "value": "0 16px 40px -8px rgba(0, 0, 0, 0.7), 0 2px 6px rgba(0, 0, 0, 0.4)", "purpose": "Popovers (pairing, keyboard shortcuts)." },
+      { "name": "toast", "value": "0 12px 32px -8px rgba(0, 0, 0, 0.7)", "purpose": "Notification toasts." },
+      { "name": "seat", "value": "0 1px 2px rgba(0, 0, 0, 0.5)", "purpose": "Selected segmented option, reads as a raised key." }
+    ],
+    "motion": [
+      { "name": "ease", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "The single house ease-out curve for all transitions." },
+      { "name": "duration-state", "value": "150ms", "purpose": "Background, border and color changes on controls." },
+      { "name": "duration-move", "value": "200ms", "purpose": "Switch knob travel." },
+      { "name": "duration-enter", "value": "220ms", "purpose": "Toast slide-up (8px) on entry." }
+    ],
+    "focus": { "value": "outline: 2px solid var(--accent); outline-offset: 2px", "purpose": "Global :focus-visible ring; inputs use offset 0 plus accent border; switches use offset -4px." },
+    "breakpoints": [
+      { "name": "narrow", "value": "640px" },
+      { "name": "single-column", "value": "1023px" }
+    ],
+    "nativeSurfaces": {
+      "pygame": {
+        "fontsDir": "assets/fonts",
+        "colors": {
+          "bg": [10, 10, 10], "surface": [17, 17, 17], "surface-2": [23, 23, 23], "surface-3": [31, 31, 31],
+          "border": [38, 38, 38], "border-strong": [58, 58, 58],
+          "text": [237, 237, 237], "text-2": [161, 161, 161], "text-3": [138, 138, 138],
+          "accent": [82, 168, 255], "accent-bg-on-surface": [26, 38, 50],
+          "ok": [63, 207, 142], "warn": [245, 165, 36], "err": [255, 97, 102], "err-bg-on-bg": [35, 19, 19]
+        }
+      },
+      "ofxDatGui": {
+        "fontsDir": "DuneBox/bin/data/fonts",
+        "colors": {
+          "bg": "0x0a0a0a", "surface": "0x111111", "surface-2": "0x171717", "surface-3": "0x1f1f1f",
+          "border": "0x262626", "border-strong": "0x3a3a3a",
+          "text": "0xededed", "text-2": "0xa1a1a1", "text-3": "0x8a8a8a",
+          "accent": "0x52a8ff", "accent-bg-on-surface": "0x1a2632",
+          "ok": "0x3fcf8e", "warn": "0xf5a524", "err": "0xff6166", "err-bg-on-bg": "0x231313"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one decisive action in view (Connect, Start sandbox).",
+      "html": "<button class=\"ds-btn ds-btn-primary\" type=\"button\">Connect</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 14px; font: 500 0.875rem/1 var(--font, Geist, system-ui, sans-serif); border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1), color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: 2px; } .ds-btn-primary { background: var(--text, #ededed); color: var(--bg, #0a0a0a); } .ds-btn-primary:hover { background: #ffffff; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The workhorse action button (events, setup, pairing).",
+      "html": "<button class=\"ds-btn ds-btn-secondary\" type=\"button\">Erupt volcano <kbd class=\"ds-kbd\">V</kbd></button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 14px; font: 500 0.875rem/1 var(--font, Geist, system-ui, sans-serif); color: var(--text, #ededed); border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: 2px; } .ds-btn-secondary { background: var(--surface-2, #171717); border-color: var(--border-strong, #3a3a3a); } .ds-btn-secondary:hover { background: var(--surface-3, #1f1f1f); border-color: #4a4a4a; } .ds-kbd { font: 0.6875rem/1 var(--mono, 'Geist Mono', monospace); color: var(--text-2, #a1a1a1); padding: 3px 5px; border: 1px solid var(--border-strong, #3a3a3a); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2, #171717); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Inline low-stakes actions: Copy, creature set, stepper.",
+      "html": "<button class=\"ds-btn ds-btn-ghost\" type=\"button\">Copy</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 14px; font: 500 0.875rem/1 var(--font, Geist, system-ui, sans-serif); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16,1,0.3,1), color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: 2px; } .ds-btn-ghost { color: var(--text-2, #a1a1a1); } .ds-btn-ghost:hover { color: var(--text, #ededed); background: var(--surface-3, #1f1f1f); }"
+    },
+    {
+      "name": "Switch",
+      "kind": "custom",
+      "refersTo": "switch-on",
+      "description": "Binary setting; 36x20 track inside a 52x44 hit area, Signal Blue when on.",
+      "html": "<button class=\"ds-switch\" type=\"button\" role=\"switch\" aria-checked=\"true\" aria-label=\"Contour lines\" onclick=\"this.setAttribute('aria-checked', this.getAttribute('aria-checked') !== 'true')\"></button>",
+      "css": ".ds-switch { position: relative; width: 52px; height: 44px; padding: 0; background: transparent; border: 0; cursor: pointer; } .ds-switch::before { content: ''; position: absolute; inset: 12px 8px; border-radius: 999px; background: var(--surface-3, #1f1f1f); border: 1px solid var(--border-strong, #3a3a3a); transition: background-color 150ms cubic-bezier(0.16,1,0.3,1), border-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-switch::after { content: ''; position: absolute; top: 15px; left: 11px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-2, #a1a1a1); transition: transform 200ms cubic-bezier(0.16,1,0.3,1), background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-switch[aria-checked='true']::before { background: var(--accent, #52a8ff); border-color: var(--accent, #52a8ff); } .ds-switch[aria-checked='true']::after { transform: translateX(16px); background: #0a0a0a; } .ds-switch:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: -4px; border-radius: 999px; }"
+    },
+    {
+      "name": "Segmented Theme Picker",
+      "kind": "custom",
+      "refersTo": "segmented",
+      "description": "Recessed radio group; options carry a swatch strip from the real terrain palette.",
+      "html": "<div class=\"ds-seg\" role=\"radiogroup\" aria-label=\"Color theme\"><button role=\"radio\" aria-checked=\"true\"><span class=\"ds-sw\" style=\"background:#3a3a3a\"></span>Classic</button><button role=\"radio\" aria-checked=\"false\"><span class=\"ds-sw\" style=\"background:#3a3a3a\"></span>Mono</button><button role=\"radio\" aria-checked=\"false\"><span class=\"ds-sw\" style=\"background:#3a3a3a\"></span>Desert</button><button role=\"radio\" aria-checked=\"false\"><span class=\"ds-sw\" style=\"background:#3a3a3a\"></span>Ice</button></div>",
+      "css": ".ds-seg { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 2px; width: 360px; background: var(--bg, #0a0a0a); border: 1px solid var(--border, #262626); border-radius: 6px; } .ds-seg button { min-height: 40px; padding: 0 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font: 500 0.8125rem/1 var(--font, Geist, system-ui, sans-serif); color: var(--text-2, #a1a1a1); background: transparent; border: 0; border-radius: 4px; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16,1,0.3,1), color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-seg button:hover { color: var(--text, #ededed); } .ds-seg button:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: 2px; } .ds-seg button[aria-checked='true'] { background: var(--surface-3, #1f1f1f); color: var(--text, #ededed); box-shadow: 0 1px 2px rgba(0,0,0,0.5); } .ds-sw { display: block; width: 100%; max-width: 56px; height: 4px; border-radius: 2px; }"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-pill",
+      "description": "Top-bar health indicator; dot plus words, tinted for warn/err.",
+      "html": "<span class=\"ds-status\" data-tone=\"ok\"><span class=\"ds-dot\"></span>Sensor: Kinect v2</span> <span class=\"ds-status\" data-tone=\"warn\"><span class=\"ds-dot\"></span>Sensor: waiting</span> <span class=\"ds-status\" data-tone=\"err\"><span class=\"ds-dot\"></span>Disconnected</span>",
+      "css": ".ds-status { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; font: 400 0.8125rem/1 var(--font, Geist, system-ui, sans-serif); color: var(--text-2, #a1a1a1); border: 1px solid var(--border, #262626); border-radius: 999px; white-space: nowrap; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3, #8a8a8a); } .ds-status[data-tone='ok'] .ds-dot { background: var(--ok, #3fcf8e); } .ds-status[data-tone='warn'] { color: var(--warn, #f5a524); border-color: rgba(245,165,36,0.35); } .ds-status[data-tone='warn'] .ds-dot { background: var(--warn, #f5a524); } .ds-status[data-tone='err'] { color: var(--err, #ff6166); border-color: rgba(255,97,102,0.35); } .ds-status[data-tone='err'] .ds-dot { background: var(--err, #ff6166); }"
+    },
+    {
+      "name": "Control Group",
+      "kind": "card",
+      "refersTo": "control-group",
+      "description": "Hairline panel of 52px rows grouped by job; key-cap hint revealed on hover/focus.",
+      "html": "<fieldset class=\"ds-group\"><legend class=\"ds-group-title\">World</legend><div class=\"ds-row\"><span class=\"ds-row-label\">Contour lines <kbd class=\"ds-kbd\">C</kbd></span><span class=\"ds-row-value\">On</span></div><div class=\"ds-row\"><span class=\"ds-row-label\">Sound <kbd class=\"ds-kbd\">S</kbd></span><span class=\"ds-row-value\">Off</span></div></fieldset>",
+      "css": ".ds-group { margin: 0; width: 360px; display: flex; flex-direction: column; padding: 4px 16px 12px; background: var(--surface, #111111); border: 1px solid var(--border, #262626); border-radius: 8px; font: 400 0.875rem/1.5 var(--font, Geist, system-ui, sans-serif); color: var(--text, #ededed); } .ds-group-title { float: left; width: 100%; padding: 12px 0 4px; font-weight: 600; letter-spacing: -0.005em; } .ds-row { clear: both; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; border-bottom: 1px solid var(--border, #262626); } .ds-row:last-child { border-bottom: 0; } .ds-row-label { display: inline-flex; align-items: center; gap: 8px; } .ds-row-value { color: var(--text-2, #a1a1a1); } .ds-kbd { visibility: hidden; font: 0.6875rem/1 var(--mono, 'Geist Mono', monospace); color: var(--text-2, #a1a1a1); padding: 3px 5px; border: 1px solid var(--border-strong, #3a3a3a); border-bottom-width: 2px; border-radius: 4px; background: var(--surface-2, #171717); } .ds-row:hover .ds-kbd, .ds-row:focus-within .ds-kbd { visibility: visible; }"
+    },
+    {
+      "name": "PIN Input",
+      "kind": "input",
+      "refersTo": "input-pin",
+      "description": "Recessed field; Mono numerals with wide tracking; accent border on focus.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">PIN</span><input class=\"ds-input\" inputmode=\"numeric\" value=\"4821\"></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; width: 320px; } .ds-field-label { font: 400 0.8125rem/1.5 var(--font, Geist, system-ui, sans-serif); color: var(--text-2, #a1a1a1); } .ds-input { height: 44px; padding: 0 12px; font: 500 1.25rem/1 var(--mono, 'Geist Mono', monospace); letter-spacing: 0.2em; color: var(--text, #ededed); background: var(--bg, #0a0a0a); border: 1px solid var(--border-strong, #3a3a3a); border-radius: 6px; } .ds-input:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: 0; border-color: var(--accent, #52a8ff); }"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": "status-pill",
+      "description": "Sticky bar: brand mark and wordmark left, status pills and one secondary action right.",
+      "html": "<header class=\"ds-topbar\"><span class=\"ds-brand\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path d=\"M2 18c3-5 5-7 8-7s4 3 6 3 4-2 6-4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/><path d=\"M2 22c3-3 5-4 8-4s4 2 6 2 4-1 6-3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" opacity=\".5\"/></svg>DuneBox</span><span class=\"ds-pill\"><span class=\"ds-dot\"></span>Connected</span><button class=\"ds-tb-btn\" type=\"button\">Open on a tablet</button></header>",
+      "css": ".ds-topbar { display: flex; align-items: center; gap: 16px; padding: 10px 24px; background: rgba(10,10,10,0.92); border-bottom: 1px solid var(--border, #262626); color: var(--text, #ededed); font-family: var(--font, Geist, system-ui, sans-serif); } .ds-brand { display: flex; align-items: center; gap: 10px; font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; } .ds-pill { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; font-size: 0.8125rem; color: var(--text-2, #a1a1a1); border: 1px solid var(--border, #262626); border-radius: 999px; } .ds-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok, #3fcf8e); } .ds-tb-btn { min-height: 44px; padding: 0 14px; font: 500 0.875rem/1 inherit; font-family: inherit; color: var(--text, #ededed); background: var(--surface-2, #171717); border: 1px solid var(--border-strong, #3a3a3a); border-radius: 6px; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16,1,0.3,1); } .ds-tb-btn:hover { background: var(--surface-3, #1f1f1f); } .ds-tb-btn:focus-visible { outline: 2px solid var(--accent, #52a8ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "Bottom-right notification led by a status dot; slides up 8px on entry.",
+      "html": "<div class=\"ds-toast\">Snapshot saved.</div> <div class=\"ds-toast\" data-tone=\"err\">Sensor unplugged. Replug the Kinect, then press Retry.</div>",
+      "css": ".ds-toast { display: flex; align-items: flex-start; gap: 10px; width: 340px; margin-bottom: 8px; padding: 12px 14px; font: 400 0.875rem/1.5 var(--font, Geist, system-ui, sans-serif); color: var(--text, #ededed); background: var(--surface-2, #171717); border: 1px solid var(--border-strong, #3a3a3a); border-radius: 8px; box-shadow: 0 12px 32px -8px rgba(0,0,0,0.7); animation: ds-toast-in 220ms cubic-bezier(0.16,1,0.3,1); } .ds-toast::before { content: ''; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--ok, #3fcf8e); flex-shrink: 0; } .ds-toast[data-tone='err'] { border-color: rgba(255,97,102,0.45); } .ds-toast[data-tone='err']::before { background: var(--err, #ff6166); } @keyframes ds-toast-in { from { opacity: 0; transform: translateY(8px); } } @media (prefers-reduced-motion: reduce) { .ds-toast { animation: none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Console",
+    "overview": "DuneBox's operator surfaces are a console, not a show. The sand under the projector is the spectacle; every screen an adult touches is calm, near-black, and legible at arm's length in a dim room, so it never competes with the projection. The direction is the category standard played straight (chosen by Max, 2026-10-03): a crisp dark product UI held to the craft level of Vercel and Linear. No themed or novelty world; no sand textures, no topo-line decoration in the chrome.\n\nDensity is moderate and job-grouped. The live sand view leads on the left with four honest facts beneath it; the right column holds controls grouped by job (World, Events, Games, Setup, DuneBox C++), each a hairline-bordered panel of 52px rows. Depth comes from stepped neutral layers, not shadows; color carries meaning only. A single blue says \"on\" or \"selected\"; green, amber and red say healthy, attention, broken, always paired with words.\n\nThe same tokens drive three surfaces: the web dashboard (the normative source, `web/assets/app.css`), the pygame settings sidebar, and the C++ ofxDatGui panel. When one of the native surfaces can't express a rule, it degrades toward the nearest honest equivalent described under Components, never toward a different look.",
+    "keyCharacteristics": [
+      "Near-black neutral layers (five steps from page to raised control) with 1px hairline borders.",
+      "One blue accent, reserved for on/selected state and focus.",
+      "Geist for all UI text; Geist Mono only for measurements, PINs, URLs and key caps.",
+      "44px minimum touch targets; 52px control rows.",
+      "Flat at rest; shadows only on floating layers (popovers, toasts) and the selected segment.",
+      "Motion is short and functional (150–220ms, one ease-out curve), and drops away under reduced motion."
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Signal Blue means \"this is on, selected, or focused\" and nothing else. If an element isn't stateful, it isn't blue.", "section": "colors" },
+      { "name": "The Words-With-Color Rule", "body": "Every status hue ships with text that says the same thing (\"Sensor: waiting\", \"Can't reach the sandbox.\"). A dot alone is never the message.", "section": "colors" },
+      { "name": "The Real Palette Exception", "body": "The only multi-hue color on screen is the theme swatch strip in the World group, which is generated from the sandbox's actual terrain palette data. It is evidence, not decoration; never hand-pick hues for it.", "section": "colors" },
+      { "name": "The Measured-Value Rule", "body": "Geist Mono with tabular figures for anything that is a number from the system, a PIN, a URL or a key; Geist for everything a human wrote. Never set prose in Mono.", "section": "typography" },
+      { "name": "The Weight-Not-Size Rule", "body": "Section titles are body-size at 600. Don't escalate headings in size to create hierarchy inside the control column.", "section": "typography" },
+      { "name": "The Arm's-Length Rule", "body": "Interactive hit areas are never below 44px (`spacing.target`), and control rows are 52px. A switch's visible track is 36×20 inside a 52×44 hit area.", "section": "layout" },
+      { "name": "The No-Glow Rule", "body": "No colored shadows, no blur halos, no backdrop-filter glass. Depth is tone plus hairline; a shadow is always black and only under something that floats.", "section": "elevation" },
+      { "name": "The Nesting Rule", "body": "Radius steps down as you go inward: 8 for the container, 6 for the control, 4 for the part inside the control.", "section": "shapes" }
+    ],
+    "dos": [
+      "**Do** let the live sand view lead the first viewport; controls sit beside it, grouped by job.",
+      "**Do** step neutrals for depth: `bg` page, `surface` panel, `surface-2` raised, `surface-3` pressed, and recess wells back to `bg`.",
+      "**Do** use Signal Blue only for on, selected and focus (`:focus-visible` is a 2px `accent` outline, 2px offset).",
+      "**Do** pair every status color with text, and write error copy that names the fix.",
+      "**Do** set every system number, PIN, URL and key in Geist Mono with tabular figures.",
+      "**Do** keep hit areas at 44px and control rows at 52px on every surface, native panels included.",
+      "**Do** use the single ease-out curve `cubic-bezier(0.16, 1, 0.3, 1)` at 150ms for color/border changes, 200–220ms for movement, and drop movement under `prefers-reduced-motion`.",
+      "**Do** keep Geist and Geist Mono vendored locally; the dashboard must work offline."
+    ],
+    "donts": [
+      "**Don't** build an admin-template stat-card grid; facts live in one hairline strip under the view.",
+      "**Don't** add glow, colored shadows, gradients on chrome, or backdrop-filter glass.",
+      "**Don't** introduce a second accent or use status hues decoratively.",
+      "**Don't** hand-pick theme swatch colors; they come from the sandbox's real palettes.",
+      "**Don't** show a control the connected app can't honor; hide it or disable its group with an explanation.",
+      "**Don't** rely on hover to reveal anything essential; key-cap hints are the only hover reveal and they vanish on touch.",
+      "**Don't** theme the operator UI with sand, terrain or novelty motifs; the projection owns that.",
+      "**Don't** swap Geist for another face to satisfy an overused-font warning; it was chosen deliberately."
+    ]
+  }
+}

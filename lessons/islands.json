@@ -1,0 +1,55 @@
+{
+  "id": "islands",
+  "title": {"en": "Islands and rising seas", "es": "Islas y la subida del mar"},
+  "level": {"en": "Ages 9–14", "es": "De 9 a 14 años"},
+  "minutes": 20,
+  "summary": {
+    "en": "Build an island with a town on the beach, then raise the sea and protect it.",
+    "es": "Construye una isla con un pueblo en la playa, sube el nivel del mar y protégelo."
+  },
+  "steps": [
+    {
+      "title": {"en": "Build an island", "es": "Construye una isla"},
+      "text": {
+        "en": "Make an island with a hill in the middle and a wide, flat beach. Leave sea all around it.",
+        "es": "Haz una isla con una colina en el centro y una playa ancha y plana. Deja mar a su alrededor."
+      },
+      "settings": {"theme": "terrain", "contours": true, "contour_labels": false, "sea_level": 0},
+      "check": {
+        "metric": "below_sea", "min": 0.3, "max": 0.85,
+        "hint": {"en": "Leave sea all around the island", "es": "Deja mar alrededor de la isla"}
+      }
+    },
+    {
+      "title": {"en": "Choose a place for the town", "es": "Elige dónde va el pueblo"},
+      "text": {
+        "en": "People like to live by the sea. Put a small stone or counter on the beach for the town.",
+        "es": "A la gente le gusta vivir junto al mar. Pon una piedra o una ficha en la playa para el pueblo."
+      }
+    },
+    {
+      "title": {"en": "The sea rises", "es": "El mar sube"},
+      "text": {
+        "en": "The sea has risen. Which parts of the island went under water first? Is the town safe?",
+        "es": "El mar ha subido. ¿Qué partes de la isla quedaron bajo el agua primero? ¿Está a salvo el pueblo?"
+      },
+      "settings": {"sea_level": 0.05}
+    },
+    {
+      "title": {"en": "Higher still", "es": "Todavía más alto"},
+      "text": {
+        "en": "The sea is even higher. Build a sea wall or move sand to keep the town dry.",
+        "es": "El mar está aún más alto. Construye un dique o mueve arena para que el pueblo no se moje."
+      },
+      "settings": {"sea_level": 0.1}
+    },
+    {
+      "title": {"en": "Talk about it", "es": "Hablemos"},
+      "text": {
+        "en": "The sea is back to today's level. What could a real coastal town do as the sea rises?",
+        "es": "El mar vuelve al nivel de hoy. ¿Qué podría hacer un pueblo costero de verdad si sube el mar?"
+      },
+      "settings": {"sea_level": 0}
+    }
+  ]
+}

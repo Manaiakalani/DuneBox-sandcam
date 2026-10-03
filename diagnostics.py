@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 
 import pygame
 
-
 # ── Status model ──────────────────────────────────────────────────────────────
 
 @dataclass
@@ -49,10 +48,11 @@ class DiagnosticReport:
 def _check_kinect() -> DiagnosticItem:
     """Try to import freenect ctypes wrapper and detect a device."""
     try:
-        from depth_source import KinectV1Source  # noqa: F401  (import probes availability)
         # Check if the low-level library is loadable
         import ctypes
         import pathlib
+
+        from depth_source import KinectV1Source  # noqa: F401  (import probes availability)
         dll_path = pathlib.Path(__file__).with_name("freenect.dll")
         so_names = ["libfreenect.so", "libfreenect.dylib"]
         lib = None

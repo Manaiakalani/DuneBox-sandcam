@@ -4,8 +4,8 @@ Optional local interaction rules for webcam-detected sandbox objects.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import time
+from dataclasses import dataclass
 
 import numpy as np
 import pygame

@@ -1,0 +1,55 @@
+{
+  "id": "contours",
+  "title": {"en": "Reading a topographic map", "es": "Cómo leer un mapa topográfico"},
+  "level": {"en": "Ages 9–14", "es": "De 9 a 14 años"},
+  "minutes": 20,
+  "summary": {
+    "en": "Build a mountain, then see how contour lines show its shape, height and steepness.",
+    "es": "Construye una montaña y descubre cómo las curvas de nivel muestran su forma, altura y pendiente."
+  },
+  "steps": [
+    {
+      "title": {"en": "Build a mountain", "es": "Construye una montaña"},
+      "text": {
+        "en": "Pile the sand into one tall mountain in the middle of the box.",
+        "es": "Amontona la arena para hacer una montaña alta en el centro de la caja."
+      },
+      "settings": {"theme": "terrain", "contours": false, "contour_labels": false, "sea_level": 0, "creatures": false},
+      "check": {
+        "metric": "relief", "min": 0.15,
+        "hint": {"en": "Make it taller", "es": "Hazla más alta"}
+      }
+    },
+    {
+      "title": {"en": "Turn on contour lines", "es": "Activa las curvas de nivel"},
+      "text": {
+        "en": "Each line joins places at the same height. Where are the lines close together? That's where the slope is steep.",
+        "es": "Cada línea une lugares que están a la misma altura. ¿Dónde están las líneas muy juntas? Ahí la pendiente es empinada."
+      },
+      "settings": {"contours": true, "contour_interval": 0.05}
+    },
+    {
+      "title": {"en": "Read the heights", "es": "Lee las alturas"},
+      "text": {
+        "en": "The numbers show height above sea level in centimetres. Find the highest number on your mountain.",
+        "es": "Los números indican la altura sobre el nivel del mar en centímetros. Busca el número más alto de tu montaña."
+      },
+      "settings": {"contour_labels": true}
+    },
+    {
+      "title": {"en": "A cliff and a gentle slope", "es": "Un acantilado y una ladera suave"},
+      "text": {
+        "en": "Make one side of the mountain steep and the other gentle. Compare how far apart the lines are on each side.",
+        "es": "Haz un lado de la montaña empinado y el otro suave. Compara la distancia entre las líneas en cada lado."
+      }
+    },
+    {
+      "title": {"en": "Just the map", "es": "Solo el mapa"},
+      "text": {
+        "en": "Now the colours are grey and only the lines stand out, like on a paper map. Can you still find the peak and the cliff?",
+        "es": "Ahora los colores son grises y solo destacan las líneas, como en un mapa de papel. ¿Todavía encuentras la cima y el acantilado?"
+      },
+      "settings": {"theme": "greyscale"}
+    }
+  ]
+}

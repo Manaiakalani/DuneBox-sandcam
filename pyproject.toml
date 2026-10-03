@@ -7,8 +7,10 @@ dependencies = [
     "numpy>=2.4.4",
     "opencv-contrib-python>=4.11.0.86",
     "pygame>=2.6.1",
+    "pyserial>=3.5",
     "scipy>=1.17.1",
-    "websockets>=12.0",
+    "segno>=1.6",
+    "websockets>=13.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +38,10 @@ py-modules = []
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
+# Pinned so a new ruff release can't widen its default rule set under CI.
+select = ["E4", "E7", "E9", "F", "I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 # Asset-generation dev scripts keep scratch locals for readability/tuning.

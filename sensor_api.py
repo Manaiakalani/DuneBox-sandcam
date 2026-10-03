@@ -87,6 +87,14 @@ class DepthSensor(ABC):
             return np.full((h, w), 0.5, dtype=np.float32)
         return frame
 
+    def get_aligned_color_frame(self) -> np.ndarray | None:
+        """Colour in the depth camera's geometry, for the DuneBox depth relay.
+
+        Backends that can register colour to depth override this; the default
+        is the plain colour frame, which only lines up approximately.
+        """
+        return self.get_color_frame()
+
     def sculpt(self, cx: int, cy: int, radius: int, delta: float) -> None:
         """Brush-paint the depth map.  No-op for hardware sources."""
 
@@ -592,6 +600,12 @@ class MouseSimulatorSensor(DepthSensor):
     def reset(self) -> None:
         self._map[:] = self.DEFAULT_LEVEL
 
+    def load_terrain(self, height_data: np.ndarray) -> None:
+        """Replace the sculpted map with a saved terrain (any size)."""
+        from dem_loader import fit_to
+
+        self._map = np.clip(fit_to(height_data, self._map.shape), 0.0, 1.0)
+
     def resize(self, width: int, height: int) -> None:
         from scipy.ndimage import zoom as _zoom
 
@@ -620,16 +634,19 @@ class DummySensor(DepthSensor):
 
     @staticmethod
     def _generate_terrain(w: int, h: int) -> np.ndarray:
-        """Build a multi-octave simplex-ish noise terrain."""
-        xs = np.linspace(0, 4 * math.pi, w, dtype=np.float32)
+        """Build a multi-octave simplex-ish noise terrain.
+
+        x frequencies are multiples of 0.5 over a 4*pi span so the terrain
+        tiles horizontally; get_depth_frame scrolls it with np.roll."""
+        xs = np.linspace(0, 4 * math.pi, w, endpoint=False, dtype=np.float32)
         ys = np.linspace(0, 4 * math.pi, h, dtype=np.float32)
         xg, yg = np.meshgrid(xs, ys)
 
         terrain = (
             0.5
             + 0.25 * np.sin(xg) * np.cos(yg)
-            + 0.15 * np.sin(2.3 * xg + 0.7) * np.cos(1.7 * yg + 1.1)
-            + 0.10 * np.sin(4.1 * xg + 2.0) * np.cos(3.3 * yg + 0.5)
+            + 0.15 * np.sin(2.5 * xg + 0.7) * np.cos(1.7 * yg + 1.1)
+            + 0.10 * np.sin(4.0 * xg + 2.0) * np.cos(3.3 * yg + 0.5)
         )
         return np.clip(terrain, 0.0, 1.0).astype(np.float32)
 
@@ -1151,6 +1168,13 @@ class OrbbecSensor(DepthSensor):
         ).reshape(color_frame.get_height(), color_frame.get_width(), -1)
         return color[:, :, :3].copy()
 
+    def get_aligned_color_frame(self) -> np.ndarray | None:
+        if self._connected and self._use_pyk4a:
+            transformed = self._k4a.get_capture().transformed_color
+            # BGRA in the depth camera's geometry -> RGB
+            return None if transformed is None else transformed[:, :, 2::-1].copy()
+        return self.get_color_frame()
+
     def is_connected(self) -> bool:
         return self._connected
 
@@ -1218,6 +1242,7 @@ class RealSenseSensor(DepthSensor):
         self._pipeline = None
         self._profile = None
         self._depth_scale = 1.0  # mm per depth unit
+        self._align = None  # rs.align to the depth stream, created on first use
         self._device_name = "RealSense"
 
     @staticmethod
@@ -1350,6 +1375,18 @@ class RealSenseSensor(DepthSensor):
 
         return np.asanyarray(color_frame.get_data()).copy()
 
+    def get_aligned_color_frame(self) -> np.ndarray | None:
+        if not self._connected or self._pipeline is None:
+            return None
+        if self._align is None:
+            self._align = self._rs.align(self._rs.stream.depth)
+        frames = self._align.process(self._pipeline.wait_for_frames(timeout_ms=1000))
+        color_frame = frames.get_color_frame()
+        if not color_frame:
+            return None
+        # bgr8 stream -> RGB
+        return np.asanyarray(color_frame.get_data())[:, :, ::-1].copy()
+
     def is_connected(self) -> bool:
         return self._connected
 
@@ -1418,6 +1455,11 @@ def create_sensor(config: dict, **kwargs) -> DepthSensor:
     )
     sim.connect()
     return sim
+
+
+def create_exact(sensor_type: str, **kwargs) -> DepthSensor | None:
+    """Create and connect exactly *sensor_type* (no fallback); None if unavailable."""
+    return _try_create(sensor_type, kwargs)
 
 
 def _try_create(
@@ -1535,7 +1577,7 @@ def _import_pykinect2():
     _patch_pykinect2()
 
     def _do_import():
-        from pykinect2 import PyKinectV2, PyKinectRuntime  # noqa: F401
+        from pykinect2 import PyKinectRuntime, PyKinectV2  # noqa: F401
 
         return PyKinectV2, PyKinectRuntime
 

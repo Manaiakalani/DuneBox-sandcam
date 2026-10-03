@@ -49,7 +49,7 @@ jobs:
               'bridge', 'creatures', 'day_night', 'dem_loader', 'depth_server',
               'depth_source', 'diagnostics', 'earthquake', 'ecosystem',
               'game_modes', 'interaction_engine', 'renderer', 'sensor_api',
-              'sounds', 'ui', 'volcano', 'webcam_observer', 'ai_guide', 'main',
+              'buttons', 'classroom', 'depth_relay', 'health', 'kiosk', 'sounds', 'timelapse', 'ui', 'volcano', 'webcam_observer', 'ai_guide', 'main',
           ]
           failed = []
           for m in mods:
@@ -68,5 +68,8 @@ jobs:
       - name: Launch smoke test
         run: uv run --no-sync python smoke_headless.py 30
 
+      - name: Dashboard voice parser tests
+        run: node --test web/voice.test.js
+
       - name: Unit tests
-        run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge test_creatures test_volcano test_sensor_api test_game_modes test_renderer -v
+        run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge test_creatures test_volcano test_sensor_api test_game_modes test_renderer test_depth_server test_ui test_terrain_io test_health test_kiosk test_buttons test_classroom test_depth_relay -v
