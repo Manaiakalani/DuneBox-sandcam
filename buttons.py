@@ -45,6 +45,7 @@ BUTTON_ACTIONS: dict[str, tuple[str, dict[str, Any]]] = {
     "dunebox_lava": ("DuneBox: lava on/off", {"action": "toggle_lava", "target": "dunebox"}),
     "dunebox_volcano": ("DuneBox: erupt volcano", {"action": "erupt_volcano", "target": "dunebox"}),
     "dunebox_dry": ("DuneBox: drain water", {"action": "dry_water", "target": "dunebox"}),
+    "dunebox_erosion": ("DuneBox: erosion on/off", {"action": "toggle_erosion", "target": "dunebox"}),
 }
 
 DEFAULT_MAP = {

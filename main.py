@@ -115,6 +115,7 @@ DUNEBOX_COMMANDS = {
     "dry_water": "Water drained",
     "set_evaporation": "Evaporation updated",
     "toggle_hand_rain": "Hand rain toggled",
+    "toggle_erosion": "Erosion view toggled",
     "detect_sand_region": "Detecting the sand area",
     "calibrate_projector": "Calibrating the projector",
     "full_calibration": "Full calibration started",

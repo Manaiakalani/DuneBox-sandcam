@@ -959,6 +959,10 @@
       }
       setSwitch('#dunebox-live [data-action="toggle_hand_rain"]', d.hand_rain);
     }
+    const erosionSwitch = document.querySelector('#dunebox-live [data-action="toggle_erosion"]');
+    erosionSwitch.closest(".row").hidden = d.erosion === undefined;
+    erosionSwitch.closest(".row").nextElementSibling.hidden = d.erosion === undefined;
+    if (d.erosion !== undefined) setSwitch('#dunebox-live [data-action="toggle_erosion"]', d.erosion);
     const calibrating = d.app_state === "calibrating";
     $("db-calib-actions").hidden = d.roi_calibrated === undefined || calibrating;
     $("db-calib").hidden = !calibrating;

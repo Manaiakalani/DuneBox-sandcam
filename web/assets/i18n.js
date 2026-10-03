@@ -231,6 +231,9 @@
     "Lakes slowly dry up so the sand doesn't flood over a long session.":
       "Los lagos se secan poco a poco para que la arena no se inunde en sesiones largas.",
     "Rain from hands": "Lluvia con las manos",
+    "Show erosion": "Mostrar erosión",
+    "Fast water scars the sand dark and drops pale sediment where it slows. Marks fade, and reshaping the sand clears them.":
+      "El agua rápida marca la arena de oscuro y deja sedimento claro donde se frena. Las marcas se desvanecen y se borran al mover la arena.",
     "Drain all water": "Vaciar toda el agua",
     "Lava instead of water": "Lava en vez de agua",
     "Lava mode": "Modo lava",
