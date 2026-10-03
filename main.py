@@ -19,7 +19,7 @@ P           pause / resume day/night cycle
 F5          save current terrain snapshot
 R           reset terrain (simulator only)
 B           toggle DuneBox bridge (TCP link to C++ app)
-U           toggle WebSocket depth server (remote monitoring)
+U           toggle the web dashboard (http://127.0.0.1:8765/ by default)
 Tab         open / close settings sidebar
 Esc / Q     quit
 """
@@ -47,10 +47,10 @@ from ecosystem import EcosystemManager
 from sensor_api import create_sensor
 from dem_loader import save_terrain_snapshot
 from interaction_engine import InteractionEngine
-from renderer import Renderer
+from renderer import WATER_LEVEL, Renderer
 from game_modes import GameManager
 from sounds import SoundManager
-from ui import Config, Sidebar, draw_guide_overlay
+from ui import SCHEMES, Config, Sidebar, draw_guide_overlay
 from webcam_observer import (
     AsyncCameraDiscovery,
     AsyncCameraTester,
@@ -75,6 +75,17 @@ BRUSH_DEFAULT = 50
 BRUSH_DELTA   = 0.012
 MAX_RENDER_W  = 960
 MAX_RENDER_H  = 720
+
+# Dashboard commands forwarded to DuneBox (C++) over the bridge, with the
+# confirmation shown to the operator. The C++ side maps each to its key handler.
+DUNEBOX_COMMANDS = {
+    "toggle_water": "Water simulation toggled",
+    "toggle_lava": "Lava mode toggled",
+    "erupt_volcano": "Volcano erupting",
+    "cycle_theme": "Theme changed",
+    "toggle_day_night": "Day/night toggled",
+    "start_app": "Asked DuneBox to start",
+}
 
 
 def _draw_startup_screen(
@@ -384,10 +395,14 @@ def main() -> int:
         host=config.depth_server_host,
         port=config.depth_server_port,
         max_fps=config.depth_server_max_fps,
+        pin=config.dashboard_pin,
     )
     depth_server_enabled = config.depth_server_enabled
     if depth_server_enabled:
         depth_server.start()
+    # Latest state reported by DuneBox (C++) over the bridge, for the dashboard.
+    dunebox_state: dict | None = None
+    dunebox_state_time = 0.0
     volcano_mgr = VolcanoManager(render_w, render_h)
     volcano_place_mode = False  # 'O' key toggles placement mode
     earthquake_det = EarthquakeDetector(render_w, render_h)
@@ -486,8 +501,11 @@ def main() -> int:
                         config.depth_server_enabled = depth_server_enabled
                         if depth_server_enabled:
                             depth_server.start()
+                            status_flash_text = f"Dashboard: {depth_server.dashboard_url()}"
                         else:
                             depth_server.stop()
+                            status_flash_text = "Dashboard off"
+                        status_flash_timer = 4.0
                         config.request_save()
                     elif event.key == pygame.K_o:
                         volcano_place_mode = not volcano_place_mode
@@ -842,68 +860,171 @@ def main() -> int:
                         new_scheme = bmsg.get("theme", "")
                         if new_scheme in ("terrain", "heat", "greyscale", "desert"):
                             config.colour_scheme = new_scheme
-                    elif btype == "water_status":
-                        pass  # could display as HUD overlay
+                    elif btype == "dunebox_state":
+                        dunebox_state = {k: v for k, v in bmsg.items() if k != "type"}
+                        dunebox_state_time = time.monotonic()
 
             # ── depth server: push frame + state to WebSocket clients ─────
             if depth_server_enabled:
                 depth_server.push_frame(frame)
                 creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
-                _game_info = game_mgr.get_status()
+                sensor_name = source.get_sensor_name()
+                simulated = sensor_name.startswith(("Mouse", "Dummy"))
+                bridge_up = bridge_enabled and app_bridge.is_connected()
+                if dunebox_state is not None and (
+                    not bridge_up or time.monotonic() - dunebox_state_time > 5.0
+                ):
+                    dunebox_state = None
                 depth_server.push_state({
                     "fps": round(clock.get_fps(), 1),
+                    "theme": config.colour_scheme,
+                    "themes": list(SCHEMES),
+                    "contours": config.show_contours,
+                    "below_sea_level": (
+                        round(float(np.mean(frame < WATER_LEVEL)), 3) if frame is not None else 0.0
+                    ),
                     "creatures": {
+                        "enabled": config.show_creatures,
+                        "set": creatures.creature_set,
                         "total": sum(creature_counts.values()),
                         **creature_counts,
                     },
-                    "theme": config.colour_scheme,
-                    "water_enabled": config.show_contours,
-                    "water_coverage": float(np.mean(frame < 0.38)) if frame is not None else 0.0,
-                    "lava_active": volcano_mgr.is_erupting(),
+                    "ecosystem": eco_enabled,
+                    "volcano": {
+                        "count": volcano_mgr.count(),
+                        "erupting": volcano_mgr.is_erupting(),
+                    },
                     "sound_muted": not config.sound_enabled,
                     "day_night": {
                         "enabled": day_night_enabled,
+                        "paused": day_night.is_paused(),
+                        "speed": round(day_night.get_speed(), 2),
                         "phase": day_night.get_phase() if day_night_enabled else "",
                         "time": round(day_night.get_time_of_day(), 3) if day_night_enabled else 0.0,
                     },
-                    "game": _game_info,
+                    "game": game_mgr.get_status(),
+                    "games": GameManager.get_mode_names(),
                     "sensor": {
-                        "type": source.get_sensor_name(),
-                        "connected": True,
+                        "name": sensor_name,
+                        "configured": config.sensor_type,
+                        "connected": source.is_connected(),
+                        "simulated": simulated,
+                        "can_calibrate": hasattr(source, "auto_calibrate_flat_surface"),
+                        "can_reset": hasattr(source, "reset"),
+                        "depth_mm": [config.min_depth_mm, config.max_depth_mm],
+                    },
+                    "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
+                    "dunebox": dunebox_state,
+                    "dashboard": {
+                        "url": depth_server.dashboard_url(),
+                        "lan": depth_server.lan_enabled,
                     },
                     "clients": depth_server.get_client_count(),
                     "uptime": round(time.monotonic() - app_start_time, 1),
                 })
 
                 # ── process dashboard commands ────────────────────────
+                # Every command is acknowledged with {"type": "ack", "id", "ok",
+                # "message"} so the dashboard can confirm or explain the result.
                 for cmd in depth_server.poll_commands():
-                    action = cmd.get("action", "")
+                    action = str(cmd.get("action", ""))
                     value = cmd.get("value")
-                    if action == "set_theme":
-                        if value in ("terrain", "heat", "greyscale", "desert"):
+                    target = cmd.get("target", "sandcam")
+                    ok, message = True, ""
+
+                    if target == "dunebox":
+                        if not bridge_up:
+                            ok, message = False, "DuneBox (C++) isn't connected. Start it on this PC."
+                        elif action not in DUNEBOX_COMMANDS:
+                            ok, message = False, f"Unknown DuneBox command: {action}"
+                        else:
+                            app_bridge.send({"type": "command", "action": action})
+                            message = DUNEBOX_COMMANDS[action]
+                    elif action == "set_theme":
+                        if value in SCHEMES:
                             config.colour_scheme = value
                             config.request_save()
-                    elif action == "toggle_water":
+                            message = f"Theme: {value}"
+                        else:
+                            ok, message = False, f"Unknown theme: {value}"
+                    elif action == "toggle_contours":
                         config.show_contours = not config.show_contours
                         config.request_save()
-                    elif action == "toggle_lava":
-                        pass  # lava not yet implemented as a toggle
+                        message = f"Contour lines {'on' if config.show_contours else 'off'}"
+                    elif action == "toggle_creatures":
+                        config.show_creatures = not config.show_creatures
+                        config.request_save()
+                        message = f"Creatures {'on' if config.show_creatures else 'off'}"
+                    elif action == "cycle_creature_set":
+                        message = f"Creature set: {creatures.cycle_creature_set()}"
+                    elif action == "toggle_ecosystem":
+                        eco_enabled = not eco_enabled
+                        eco_mgr.set_enabled(eco_enabled)
+                        message = f"Ecosystem {'on' if eco_enabled else 'off'}"
                     elif action == "toggle_sound":
                         muted = sound_mgr.toggle_mute()
                         config.sound_enabled = not muted
                         config.request_save()
+                        message = "Sound muted" if muted else "Sound on"
                     elif action == "toggle_day_night":
                         day_night_enabled = not day_night_enabled
                         if not day_night_enabled:
                             prev_day_night_phase = ""
+                        message = f"Day/night cycle {'on' if day_night_enabled else 'off'}"
+                    elif action == "pause_day_night":
+                        day_night.toggle_pause()
+                        message = "Cycle paused" if day_night.is_paused() else "Cycle resumed"
                     elif action == "cycle_speed":
-                        if value == "up":
-                            day_night.adjust_speed(+0.5)
-                        elif value == "down":
-                            day_night.adjust_speed(-0.5)
+                        delta = 0.5 if value == "up" else -0.5
+                        message = f"Cycle speed {day_night.adjust_speed(delta):.1f}x"
+                    elif action == "erupt_volcano":
+                        idx = volcano_mgr.place_volcano(render_w // 2, render_h // 2)
+                        volcano_mgr.trigger_eruption(idx)
+                        message = "Volcano erupting at the centre"
+                    elif action == "trigger_earthquake":
+                        earthquake_det.force_trigger(render_w // 2, render_h // 2)
+                        message = "Earthquake triggered"
                     elif action == "start_game":
                         if value in GameManager.get_available_modes():
                             game_mgr.start_game(value, source.get_frame())
+                            message = f"Started {GameManager.get_mode_names()[value]}"
+                        else:
+                            ok, message = False, f"Unknown game: {value}"
+                    elif action == "end_game":
+                        if game_mgr.is_active():
+                            game_mgr.end_game()
+                            message = "Game ended"
+                        else:
+                            ok, message = False, "No game is running"
+                    elif action == "save_snapshot":
+                        try:
+                            message = f"Saved {save_terrain_snapshot(source.get_frame()).name}"
+                        except (OSError, ValueError) as exc:
+                            ok, message = False, f"Couldn't save snapshot: {exc}"
+                    elif action == "calibrate_depth":
+                        if not hasattr(source, "auto_calibrate_flat_surface"):
+                            ok, message = False, f"{sensor_name} can't auto-calibrate depth"
+                        else:
+                            result = source.auto_calibrate_flat_surface()
+                            if result:
+                                config.min_depth_mm, config.max_depth_mm = result
+                                config.depth_range_changed = True
+                                config.request_save()
+                                message = f"Depth calibrated: {result[0]}-{result[1]} mm"
+                            else:
+                                ok, message = False, "No valid depth. Flatten the sand and clear hands away, then retry."
+                    elif action == "reset_terrain":
+                        if hasattr(source, "reset"):
+                            source.reset()
+                            message = "Terrain reset"
+                        else:
+                            ok, message = False, "Only the simulator terrain can be reset"
+                    else:
+                        ok, message = False, f"Unknown command: {action}"
+
+                    depth_server.push_event({
+                        "type": "ack", "id": cmd.get("id"), "ok": ok, "message": message,
+                    })
 
             guide_message = None
             active_challenge = None

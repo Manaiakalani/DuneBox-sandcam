@@ -14,32 +14,55 @@ from typing import Iterable
 
 import pygame
 
-# ── palette ───────────────────────────────────────────────────────────────────
-_BG         = (22, 24, 34)
-_DIVIDER    = (44, 48, 66)
-_ACCENT     = (60, 130, 210)
-_TEXT       = (210, 215, 225)
-_SUBTEXT    = (120, 126, 148)
-_TRACK      = (48, 52, 72)
-_FILL       = (55, 110, 185)
-_THUMB      = (85, 160, 230)
-_BTN        = (42, 46, 65)
-_BTN_HOV    = (58, 65, 88)
-_BTN_ACT    = (50, 115, 195)
-_INPUT_BG   = (28, 33, 46)
-_INPUT_ACT  = (30, 68, 112)
-_SCROLL_TRK = (34, 38, 52)
-_SCROLL_BAR = (90, 110, 145)
-_CARD_BG    = (16, 22, 32, 220)
-_CARD_BORDER = (72, 124, 188)
-_SUCCESS    = (90, 180, 120)
+# ── palette (DESIGN.md tokens, shared with the web dashboard) ────────────────
+_BG         = (10, 10, 10)
+_SURFACE    = (17, 17, 17)
+_SURFACE_2  = (23, 23, 23)
+_SURFACE_3  = (31, 31, 31)
+_DIVIDER    = (38, 38, 38)
+_BORDER_STRONG = (58, 58, 58)
+_ACCENT     = (82, 168, 255)
+_TEXT       = (237, 237, 237)
+_SUBTEXT    = (161, 161, 161)
+_MUTED      = (138, 138, 138)
+_TRACK      = _SURFACE_3
+_FILL       = _ACCENT
+_THUMB      = _TEXT
+_BTN        = _SURFACE_2
+_BTN_HOV    = _SURFACE_3
+_INPUT_BG   = _BG
+_SCROLL_TRK = _SURFACE
+_SCROLL_BAR = _BORDER_STRONG
+_CARD_BG    = (17, 17, 17, 235)
+_CARD_BORDER = _DIVIDER
+_SUCCESS    = (63, 207, 142)
+_ERROR      = (255, 97, 102)
 
-SIDEBAR_W   = 310
-PAD         = 14
-ROW         = 30
+SIDEBAR_W   = 320
+PAD         = 16
+ROW         = 36
 ANIM_SPEED  = 1680.0
 
+FONT_DIR = pathlib.Path(__file__).with_name("assets") / "fonts"
+_FONT_FILES = {
+    "regular": "Geist-Regular.ttf",
+    "medium": "Geist-Medium.ttf",
+    "semibold": "Geist-SemiBold.ttf",
+    "mono": "GeistMono-Regular.ttf",
+}
+
+
+def load_font(weight: str, size: int) -> pygame.font.Font:
+    """Geist from assets/fonts, falling back to a system face if it's missing."""
+    path = FONT_DIR / _FONT_FILES.get(weight, _FONT_FILES["regular"])
+    try:
+        return pygame.font.Font(str(path), size)
+    except (FileNotFoundError, OSError):
+        return pygame.font.SysFont("segoeui", size, bold=weight == "semibold")
+
+
 SCHEMES = ["terrain", "heat", "greyscale", "desert"]
+SCHEME_LABELS = {"terrain": "Terrain", "heat": "Heat map", "greyscale": "Greyscale", "desert": "Desert"}
 VERBOSITIES = ["quiet", "normal", "lively"]
 LLM_BACKENDS = [
     ("template", "Template"),
@@ -102,6 +125,7 @@ class Config:
     depth_server_host: str = "127.0.0.1"
     depth_server_port: int = 8765
     depth_server_max_fps: int = 10
+    dashboard_pin: str = ""
     vision_calibrating: bool = False
     sound_changed: bool = False
     display_changed: bool = False
@@ -199,6 +223,8 @@ class Config:
         config.sound_master_volume = max(0.0, min(1.0, float(config.sound_master_volume)))
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
+        config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
+        config.dashboard_pin = "".join(ch for ch in str(config.dashboard_pin) if ch.isdigit())
         return config
 
     def save(self) -> None:
@@ -241,6 +267,7 @@ class Config:
             "depth_server_host": self.depth_server_host,
             "depth_server_port": self.depth_server_port,
             "depth_server_max_fps": self.depth_server_max_fps,
+            "dashboard_pin": self.dashboard_pin,
         }
         CONFIG_PATH.write_text(
             json.dumps(payload, indent=2, sort_keys=True),
@@ -294,6 +321,8 @@ class Sidebar:
         self._text_input: str | None = None
         self._font_sm: pygame.font.Font | None = None
         self._font_md: pygame.font.Font | None = None
+        self._font_label: pygame.font.Font | None = None
+        self._font_mono: pygame.font.Font | None = None
         self._text_cache: dict[tuple[str, str, tuple[int, ...]], pygame.Surface] = {}
         self._bg_cache: dict[int, pygame.Surface] = {}
 
@@ -338,6 +367,10 @@ class Sidebar:
                 if layout.get(f"{key}_track", pygame.Rect(0, 0, 0, 0)).collidepoint(mx, my):
                     self._drag = key
                     return self._apply_drag(config, mx)
+
+            if layout.get("calibrate_depth", pygame.Rect(0, 0, 0, 0)).collidepoint(mx, my):
+                pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_a, mod=0, unicode="a"))
+                return True
 
             for scheme in SCHEMES:
                 if layout.get(f"scheme_{scheme}", pygame.Rect(0, 0, 0, 0)).collidepoint(mx, my):
@@ -497,8 +530,10 @@ class Sidebar:
             return
 
         if self._font_sm is None:
-            self._font_sm = pygame.font.SysFont("segoeui", 13)
-            self._font_md = pygame.font.SysFont("segoeui", 15, bold=True)
+            self._font_sm = load_font("regular", 13)
+            self._font_md = load_font("semibold", 16)
+            self._font_label = load_font("medium", 13)
+            self._font_mono = load_font("mono", 12)
 
         sw, sh = surface.get_size()
         sx = sw - SIDEBAR_W + self._offset
@@ -520,11 +555,16 @@ class Sidebar:
         y = PAD - self._scroll
 
         self._text(surface, "Settings", ix, y, self._font_md, _TEXT)
-        hint = self._font_sm.render("Tab", True, _SUBTEXT)
-        surface.blit(hint, (sx + SIDEBAR_W - PAD - hint.get_width(), y + 2))
-        y += 28
+        hint = self._render_cached("mono", "Tab", _MUTED)
+        surface.blit(hint, (sx + SIDEBAR_W - PAD - hint.get_width(), y + 3))
+        y += 32
 
-        y = self._section_header(surface, "Depth Range", sx, y)
+        y = self._section_header(surface, "Calibration", sx, y)
+        rect = pygame.Rect(ix, y, iw, ROW)
+        layout["calibrate_depth"] = rect
+        self._button(surface, rect, "Auto-calibrate depth  (A)")
+        y += ROW + 4
+        y = self._draw_status_text(surface, "Sand flat, hands clear, then calibrate.", ix, iw, y)
         for key in ("min", "max"):
             y = self._draw_slider(surface, config, layout, key, ix, iw, y)
 
@@ -532,70 +572,43 @@ class Sidebar:
         for key in ("alpha", "threshold", "persist", "reject"):
             y = self._draw_slider(surface, config, layout, key, ix, iw, y)
 
-        y = self._section_header(surface, "Colour Scheme", sx, y + 4)
+        y = self._section_header(surface, "Color theme", sx, y + 4)
         btn_w = (iw - 6) // 2
         for i, scheme in enumerate(SCHEMES):
             bx = ix + (i % 2) * (btn_w + 6)
-            by = y + (i // 2) * (ROW + 2)
-            rect = pygame.Rect(bx, by, btn_w, ROW - 4)
+            by = y + (i // 2) * (ROW + 4)
+            rect = pygame.Rect(bx, by, btn_w, ROW)
             layout[f"scheme_{scheme}"] = rect
-            self._button(surface, rect, scheme.capitalize(), active=config.colour_scheme == scheme)
-        y += ((len(SCHEMES) - 1) // 2 + 1) * (ROW + 2) + 6
-
-        y = self._section_header(surface, "Display", sx, y)
-        displays = pygame.display.get_desktop_sizes()
-        for i, (dw, dh) in enumerate(displays):
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
-            layout[f"disp_{i}"] = rect
-            active = config.display_index == i and config.fullscreen
-            self._button(surface, rect, f"Display {i + 1}  {dw}x{dh}", active=active)
-            y += ROW
-
-        y += 4
-        rect = pygame.Rect(ix, y, iw, ROW)
-        layout["fullscreen"] = rect
-        fs_label = "Borderless ON" if config.fullscreen else "Borderless"
-        self._button(surface, rect, fs_label, active=config.fullscreen)
-        y += ROW + 10
+            self._button(surface, rect, SCHEME_LABELS[scheme], active=config.colour_scheme == scheme)
+        y += ((len(SCHEMES) - 1) // 2 + 1) * (ROW + 4) + 6
 
         y = self._section_header(surface, "View", sx, y)
-        rect = pygame.Rect(ix, y, iw, ROW - 4)
-        layout["contours"] = rect
-        self._button(surface, rect, "Contour Lines", active=config.show_contours)
-        y += ROW
-
-        rect = pygame.Rect(ix, y, iw, ROW - 4)
-        layout["creatures"] = rect
-        creatures_label = "Creatures ON" if config.show_creatures else "Creatures OFF"
-        self._button(surface, rect, creatures_label, active=config.show_creatures)
-        y += ROW + 8
-        y = self._section_header(surface, "Creatures", sx, y)
+        y = self._toggle(surface, layout, "contours", "Contour lines", config.show_contours, ix, iw, y)
+        y = self._toggle(surface, layout, "creatures", "Creatures", config.show_creatures, ix, iw, y)
         for key in ("sharks", "dinosaurs"):
             y = self._draw_slider(surface, config, layout, key, ix, iw, y)
 
-        y = self._section_header(surface, "AI Guide", sx, y)
-        rect = pygame.Rect(ix, y, iw, ROW - 4)
-        layout["ai_enabled"] = rect
-        ai_label = "AI Features ON" if config.ai_enabled else "AI Features OFF"
-        self._button(surface, rect, ai_label, active=config.ai_enabled)
-        y += ROW
+        y = self._section_header(surface, "Display", sx, y + 4)
+        displays = pygame.display.get_desktop_sizes()
+        for i, (dw, dh) in enumerate(displays):
+            rect = pygame.Rect(ix, y, iw, ROW)
+            layout[f"disp_{i}"] = rect
+            active = config.display_index == i and config.fullscreen
+            self._button(surface, rect, f"Display {i + 1}  ·  {dw}×{dh}", active=active)
+            y += ROW + 4
+        y = self._toggle(surface, layout, "fullscreen", "Borderless fullscreen", config.fullscreen, ix, iw, y)
+
+        y = self._section_header(surface, "AI guide", sx, y + 4)
+        y = self._toggle(surface, layout, "ai_enabled", "AI features", config.ai_enabled, ix, iw, y)
 
         if config.ai_enabled:
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
-            layout["guide_enabled"] = rect
-            self._button(surface, rect, "Guide Overlay", active=config.guide_enabled)
-            y += ROW
-
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
-            layout["guide_challenges_enabled"] = rect
-            self._button(surface, rect, "Challenges", active=config.guide_challenges_enabled)
-            y += ROW
-
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
-            layout["llm_enabled"] = rect
-            llm_label = "LLM Wording ON" if config.llm_enabled else "LLM Wording OFF"
-            self._button(surface, rect, llm_label, active=config.llm_enabled)
-            y += ROW + 2
+            y = self._toggle(surface, layout, "guide_enabled", "Guide overlay", config.guide_enabled, ix, iw, y)
+            y = self._toggle(
+                surface, layout, "guide_challenges_enabled", "Challenges",
+                config.guide_challenges_enabled, ix, iw, y,
+            )
+            y = self._toggle(surface, layout, "llm_enabled", "LLM wording", config.llm_enabled, ix, iw, y)
+            y += 2
 
             y = self._labelled_buttons(
                 surface,
@@ -615,7 +628,7 @@ class Sidebar:
                     surface,
                     layout,
                     prefix="backend",
-                    label="LLM Backend",
+                    label="LLM backend",
                     options=LLM_BACKENDS,
                     active_key=config.llm_backend,
                     ix=ix,
@@ -629,7 +642,7 @@ class Sidebar:
                         surface,
                         layout,
                         key="llm_model",
-                        label="LLM Model",
+                        label="LLM model",
                         value=config.llm_model or "(provider default)",
                         ix=ix,
                         iw=iw,
@@ -645,16 +658,11 @@ class Sidebar:
                         iw=iw,
                         y=y + 2,
                     )
-                    rect = pygame.Rect(ix, y + 6, iw, ROW - 4)
+                    rect = pygame.Rect(ix, y + 6, iw, ROW)
                     layout["llm_test"] = rect
-                    label = "Testing..." if config.llm_test_status == "running" else "Test LLM Connection"
-                    self._button(
-                        surface,
-                        rect,
-                        label,
-                        active=config.llm_test_status == "running",
-                    )
-                    y += ROW + 2
+                    label = "Testing…" if config.llm_test_status == "running" else "Test LLM connection"
+                    self._button(surface, rect, label)
+                    y += ROW + 10
                     if config.llm_test_message:
                         y = self._draw_status_text(
                             surface,
@@ -667,43 +675,55 @@ class Sidebar:
                         )
 
         y = self._section_header(surface, "Vision", sx, y + 6)
-        rect = pygame.Rect(ix, y, iw, ROW - 4)
-        layout["vision_enabled"] = rect
-        vision_label = "Vision ON" if config.vision_enabled else "Vision OFF"
-        self._button(surface, rect, vision_label, active=config.vision_enabled)
-        y += ROW
+        y = self._toggle(surface, layout, "vision_enabled", "Webcam vision", config.vision_enabled, ix, iw, y)
 
         if config.vision_enabled:
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
-            layout["object_reactions_enabled"] = rect
-            reactions_label = "Object Reactions ON" if config.object_reactions_enabled else "Object Reactions OFF"
-            self._button(surface, rect, reactions_label, active=config.object_reactions_enabled)
-            y += ROW
+            rect = pygame.Rect(ix, y, iw, ROW)
+            layout["vision_calibrating"] = rect
+            calibrate_label = "Stop projector calibration" if config.vision_calibrating else "Calibrate projector"
+            self._button(surface, rect, calibrate_label, active=config.vision_calibrating)
+            y += ROW + 4
+            if config.calibration_message:
+                y = self._draw_status_text(
+                    surface,
+                    config.calibration_message,
+                    ix,
+                    iw,
+                    y,
+                    ok=bool(config.vision_calibration_points),
+                    bad=False,
+                )
 
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
-            layout["vision_debug_enabled"] = rect
-            debug_label = "Vision Debug ON" if config.vision_debug_enabled else "Vision Debug OFF"
-            self._button(surface, rect, debug_label, active=config.vision_debug_enabled)
-            y += ROW + 2
+            y = self._toggle(
+                surface, layout, "object_reactions_enabled", "Object reactions",
+                config.object_reactions_enabled, ix, iw, y,
+            )
+            y = self._toggle(
+                surface, layout, "vision_debug_enabled", "Debug overlay",
+                config.vision_debug_enabled, ix, iw, y,
+            )
+            y += 2
 
-            self._label(surface, "Camera Index", ix, y)
-            y += 17
+            self._label(surface, "Camera index", ix, y)
+            y += 20
             btn_w = (iw - 12) // 3
-            left = pygame.Rect(ix, y, btn_w, ROW - 4)
-            mid = pygame.Rect(ix + btn_w + 6, y, btn_w, ROW - 4)
-            right = pygame.Rect(ix + (btn_w + 6) * 2, y, btn_w, ROW - 4)
+            left = pygame.Rect(ix, y, btn_w, ROW)
+            mid = pygame.Rect(ix + btn_w + 6, y, btn_w, ROW)
+            right = pygame.Rect(ix + (btn_w + 6) * 2, y, btn_w, ROW)
             layout["camera_minus"] = left
             layout["camera_plus"] = right
-            self._button(surface, left, "-", active=False)
-            self._button(surface, mid, f"{config.camera_index}", active=True)
-            self._button(surface, right, "+", active=False)
-            y += ROW
+            self._button(surface, left, "−")
+            pygame.draw.rect(surface, _DIVIDER, mid, width=1, border_radius=6)
+            value = self._render_cached("mono", str(config.camera_index), _TEXT)
+            surface.blit(value, value.get_rect(center=mid.center))
+            self._button(surface, right, "+")
+            y += ROW + 4
 
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
+            rect = pygame.Rect(ix, y, iw, ROW)
             layout["camera_scan"] = rect
-            scan_label = "Scanning Cameras..." if config.camera_scan_status == "scanning" else "Scan Cameras"
-            self._button(surface, rect, scan_label, active=config.camera_scan_status == "scanning")
-            y += ROW
+            scan_label = "Scanning cameras…" if config.camera_scan_status == "scanning" else "Scan cameras"
+            self._button(surface, rect, scan_label)
+            y += ROW + 4
             if config.camera_scan_message:
                 y = self._draw_status_text(
                     surface,
@@ -717,20 +737,21 @@ class Sidebar:
 
             cameras = config.available_cameras or []
             if cameras:
-                y = self._section_header(surface, "Detected Cameras", sx, y + 2)
+                self._label(surface, "Detected cameras", ix, y + 2)
+                y += 22
                 for camera in cameras:
                     camera_index = int(camera["index"])
-                    rect = pygame.Rect(ix, y, iw, ROW - 4)
+                    rect = pygame.Rect(ix, y, iw, ROW)
                     layout[f"camera_pick_{camera_index}"] = rect
                     label = str(camera.get("label", f"Camera {camera_index}"))
                     self._button(surface, rect, label, active=config.camera_index == camera_index)
-                    y += ROW
+                    y += ROW + 4
 
-            rect = pygame.Rect(ix, y, iw, ROW - 4)
+            rect = pygame.Rect(ix, y, iw, ROW)
             layout["camera_test"] = rect
-            camera_test_label = "Testing Camera..." if config.camera_test_status == "running" else "Test Camera"
-            self._button(surface, rect, camera_test_label, active=config.camera_test_status == "running")
-            y += ROW
+            camera_test_label = "Testing camera…" if config.camera_test_status == "running" else "Test camera"
+            self._button(surface, rect, camera_test_label)
+            y += ROW + 4
             if config.camera_test_message:
                 y = self._draw_status_text(
                     surface,
@@ -740,22 +761,6 @@ class Sidebar:
                     y,
                     ok=config.camera_test_status == "ok",
                     bad=config.camera_test_status == "error",
-                )
-
-            rect = pygame.Rect(ix, y + 2, iw, ROW - 4)
-            layout["vision_calibrating"] = rect
-            calibrate_label = "Calibration Mode ON" if config.vision_calibrating else "Calibration Mode"
-            self._button(surface, rect, calibrate_label, active=config.vision_calibrating)
-            y += ROW + 2
-            if config.calibration_message:
-                y = self._draw_status_text(
-                    surface,
-                    config.calibration_message,
-                    ix,
-                    iw,
-                    y,
-                    ok=bool(config.vision_calibration_points),
-                    bad=False,
                 )
 
         self._content_h = y + ROW + PAD + self._scroll
@@ -847,12 +852,13 @@ class Sidebar:
         spec = SLIDER_SPECS[key]
         value = self._slider_value(config, key)
         self._label(surface, spec["label"], ix, y)
-        self._label(surface, self._slider_value_text(key, value), ix + iw, y, align_right=True)
-        y += 17
-        track_visual = pygame.Rect(ix, y + 6, iw, 6)
-        layout[f"{key}_track"] = pygame.Rect(ix, y, iw, 20)
+        value_txt = self._render_cached("mono", self._slider_value_text(key, value), _TEXT)
+        surface.blit(value_txt, (ix + iw - value_txt.get_width(), y + 1))
+        y += 18
+        track_visual = pygame.Rect(ix, y + 11, iw, 4)
+        layout[f"{key}_track"] = pygame.Rect(ix, y, iw, 26)
         self._slider(surface, track_visual, float(value), float(spec["lo"]), float(spec["hi"]))
-        return y + ROW
+        return y + 32
 
     def _labelled_buttons(
         self,
@@ -869,18 +875,18 @@ class Sidebar:
         columns: int,
     ) -> int:
         self._label(surface, label, ix, y)
-        y += 17
+        y += 20
         items = list(options)
         gap = 6
         btn_w = (iw - gap * (columns - 1)) // columns
         for index, (key, text) in enumerate(items):
             bx = ix + (index % columns) * (btn_w + gap)
-            by = y + (index // columns) * (ROW + 2)
-            rect = pygame.Rect(bx, by, btn_w, ROW - 4)
+            by = y + (index // columns) * (ROW + 4)
+            rect = pygame.Rect(bx, by, btn_w, ROW)
             layout[f"{prefix}_{key}"] = rect
             self._button(surface, rect, text, active=key == active_key)
         rows = ((len(items) - 1) // columns) + 1
-        return y + rows * (ROW + 2)
+        return y + rows * (ROW + 4)
 
     def _draw_text_input(
         self,
@@ -895,20 +901,22 @@ class Sidebar:
         y: int,
     ) -> int:
         self._label(surface, label, ix, y)
-        y += 17
+        y += 20
         rect = pygame.Rect(ix, y, iw, ROW)
         layout[key] = rect
         active = self._text_input == key
-        colour = _INPUT_ACT if active else _INPUT_BG
-        pygame.draw.rect(surface, colour, rect, border_radius=4)
-        pygame.draw.rect(surface, _CARD_BORDER if active else _DIVIDER, rect, width=1, border_radius=4)
+        pygame.draw.rect(surface, _INPUT_BG, rect, border_radius=6)
+        pygame.draw.rect(surface, _ACCENT if active else _DIVIDER, rect, width=1, border_radius=6)
         text = value
         max_chars = max(8, (iw - 18) // 7)
         if len(text) > max_chars:
-            text = "..." + text[-(max_chars - 3):]
+            text = "…" + text[-(max_chars - 1):]
         txt = self._font_sm.render(text, True, _TEXT)
-        surface.blit(txt, (rect.x + 8, rect.y + 8))
-        return y + ROW + 4
+        surface.blit(txt, (rect.x + 10, rect.centery - txt.get_height() // 2))
+        if active and (pygame.time.get_ticks() // 530) % 2 == 0:
+            cx = rect.x + 11 + txt.get_width()
+            pygame.draw.line(surface, _TEXT, (cx, rect.y + 9), (cx, rect.bottom - 9))
+        return y + ROW + 6
 
     def _draw_status_text(
         self,
@@ -925,11 +933,11 @@ class Sidebar:
         if ok:
             colour = _SUCCESS
         elif bad:
-            colour = (205, 120, 120)
+            colour = _ERROR
         for line in _wrap_text(self._font_sm, text, iw):
-            surface.blit(self._font_sm.render(line, True, colour), (ix, y))
-            y += 16
-        return y + 4
+            surface.blit(self._render_cached("sm", line, colour), (ix, y))
+            y += 18
+        return y + 6
 
     def _slider_value(self, config: Config, key: str) -> float | int:
         return {
@@ -957,9 +965,27 @@ class Sidebar:
 
     def _section_header(self, surface, label, sx, y):
         pygame.draw.line(surface, _DIVIDER, (sx, y), (sx + SIDEBAR_W, y))
-        lbl = self._font_sm.render(label.upper(), True, _SUBTEXT)
-        surface.blit(lbl, (sx + PAD, y + 5))
-        return y + 22
+        surface.blit(self._render_cached("label", label, _TEXT), (sx + PAD, y + 12))
+        return y + 38
+
+    def _toggle(self, surface, layout, key, label, on, ix, iw, y):
+        """Label left, switch right; the whole row is the hit target."""
+        row = pygame.Rect(ix, y, iw, ROW)
+        layout[key] = row
+        if row.collidepoint(pygame.mouse.get_pos()):
+            pygame.draw.rect(surface, _SURFACE_2, row.inflate(8, 0), border_radius=6)
+        txt = self._render_cached("sm", label, _TEXT)
+        surface.blit(txt, (ix, row.centery - txt.get_height() // 2))
+        track = pygame.Rect(0, 0, 36, 20)
+        track.midright = (row.right, row.centery)
+        if on:
+            pygame.draw.rect(surface, _ACCENT, track, border_radius=10)
+        else:
+            pygame.draw.rect(surface, _SURFACE_3, track, border_radius=10)
+            pygame.draw.rect(surface, _BORDER_STRONG, track, width=1, border_radius=10)
+        knob_x = track.right - 10 if on else track.left + 10
+        pygame.draw.circle(surface, _BG if on else _SUBTEXT, (knob_x, track.centery), 7)
+        return y + ROW + 2
 
     def _max_scroll(self, viewport_h: int) -> int:
         return max(0, self._content_h - viewport_h)
@@ -990,23 +1016,25 @@ class Sidebar:
     def _text(self, surface, text, x, y, font, colour):
         font_key = "md" if font is self._font_md else "sm"
         surface.blit(self._render_cached(font_key, text, colour), (x, y))
-
     def _slider(self, surface, track: pygame.Rect, val: float, lo: float, hi: float):
         t = (val - lo) / (hi - lo)
         tx = int(track.left + t * track.width)
-        pygame.draw.rect(surface, _TRACK, track, border_radius=3)
+        pygame.draw.rect(surface, _TRACK, track, border_radius=2)
         filled = pygame.Rect(track.left, track.top, tx - track.left, track.height)
         if filled.width > 0:
-            pygame.draw.rect(surface, _FILL, filled, border_radius=3)
-        pygame.draw.circle(surface, _THUMB, (tx, track.centery), 7)
-        pygame.draw.circle(surface, _BG, (tx, track.centery), 3)
+            pygame.draw.rect(surface, _FILL, filled, border_radius=2)
+        pygame.draw.circle(surface, _THUMB, (tx, track.centery), 8)
 
     def _button(self, surface, rect: pygame.Rect, label: str, active: bool = False):
-        mx, my = pygame.mouse.get_pos()
-        hover = rect.collidepoint(mx, my)
-        colour = _BTN_ACT if active else (_BTN_HOV if hover else _BTN)
-        pygame.draw.rect(surface, colour, rect, border_radius=4)
-        txt = self._render_cached("sm", label, _TEXT)
+        """Secondary button; ``active`` marks the selected option in a group."""
+        hover = rect.collidepoint(pygame.mouse.get_pos())
+        if active:
+            pygame.draw.rect(surface, _SURFACE_3, rect, border_radius=6)
+            pygame.draw.rect(surface, _ACCENT, rect, width=1, border_radius=6)
+        else:
+            pygame.draw.rect(surface, _BTN_HOV if hover else _BTN, rect, border_radius=6)
+            pygame.draw.rect(surface, _DIVIDER, rect, width=1, border_radius=6)
+        txt = self._render_cached("label", label, _TEXT if active or hover else _SUBTEXT)
         surface.blit(txt, txt.get_rect(center=rect.center))
 
     def _render_cached(
@@ -1019,7 +1047,11 @@ class Sidebar:
         cached = self._text_cache.get(key)
         if cached is not None:
             return cached
-        font = self._font_md if font_key == "md" else self._font_sm
+        font = {
+            "md": self._font_md,
+            "label": self._font_label,
+            "mono": self._font_mono,
+        }.get(font_key, self._font_sm)
         assert font is not None
         rendered = font.render(text, True, colour)
         self._text_cache[key] = rendered
@@ -1041,9 +1073,9 @@ def draw_guide_overlay(
     global _GUIDE_FONTS
     if _GUIDE_FONTS is None:
         _GUIDE_FONTS = (
-            pygame.font.SysFont("segoeui", 19, bold=True),
-            pygame.font.SysFont("segoeui", 16),
-            pygame.font.SysFont("segoeui", 13, bold=True),
+            load_font("semibold", 20),
+            load_font("regular", 16),
+            load_font("medium", 13),
         )
     title_font, body_font, label_font = _GUIDE_FONTS
 
@@ -1059,8 +1091,8 @@ def draw_guide_overlay(
 
     rect = pygame.Rect(x, y, width, height)
     card = pygame.Surface(rect.size, pygame.SRCALPHA)
-    pygame.draw.rect(card, _CARD_BG, card.get_rect(), border_radius=12)
-    pygame.draw.rect(card, _CARD_BORDER, card.get_rect(), width=2, border_radius=12)
+    pygame.draw.rect(card, _CARD_BG, card.get_rect(), border_radius=8)
+    pygame.draw.rect(card, _CARD_BORDER, card.get_rect(), width=1, border_radius=8)
     surface.blit(card, rect.topleft)
 
     cy = y + 12

@@ -1,576 +1,245 @@
 <!DOCTYPE html>
+<!--
+THESIS: An operator console for a live sandbox, played straight as a crisp dark product UI (Vercel/Linear craft). Refuses the admin-template stat-card grid: the live sand view leads, controls are grouped by job, every indicator is real.
+OWN-WORLD: Near-black neutral layers, one blue accent for on/selected state, Geist Sans for UI and Geist Mono only for measurements. Hairline borders, 8px radius, no glow, no glass.
+STORY: A parent, teacher or museum operator sees at a glance whether the sandbox is healthy, changes what the kids see, and gets a plain-language fix when something is wrong.
+FIRST VIEWPORT: Top bar with app name, sensor health and connection; left, the colorized live sand view with four facts beneath; right, a control column (World, Events, Games, System, DuneBox C++).
+FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; seed key 376091e8 not used.
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>DuneBox Dashboard</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg: #0d1117;
-    --panel: #161b22;
-    --border: #30363d;
-    --blue: #58a6ff;
-    --green: #3fb950;
-    --red: #f85149;
-    --yellow: #d29922;
-    --text: #c9d1d9;
-    --text-dim: #8b949e;
-    --text-bright: #f0f6fc;
-    --radius: 12px;
-  }
-
-  body {
-    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg); color: var(--text);
-    min-height: 100vh; display: flex; flex-direction: column;
-  }
-
-  /* ── Header ─────────────────────────────────── */
-  header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 24px;
-    background: var(--panel); border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  header h1 { font-size: 1.15rem; font-weight: 700; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
-  .conn-group { display: flex; align-items: center; gap: 10px; }
-  .conn-dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--red); transition: background .3s;
-    flex-shrink: 0;
-  }
-  .conn-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .conn-dot.connecting { background: var(--yellow); }
-  .conn-label { font-size: .75rem; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-  #ws-url {
-    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-    color: var(--text); font-size: .75rem; padding: 4px 10px; width: 190px;
-    font-family: inherit;
-  }
-  #ws-url:focus { outline: none; border-color: var(--blue); }
-
-  /* ── Main layout ────────────────────────────── */
-  .main { display: flex; flex: 1; overflow: hidden; }
-
-  .view-col {
-    flex: 0 0 60%; display: flex; flex-direction: column;
-    padding: 16px; gap: 12px; overflow-y: auto;
-  }
-  .sidebar-col {
-    flex: 0 0 40%; display: flex; flex-direction: column;
-    padding: 16px 16px 16px 0; gap: 12px; overflow-y: auto;
-  }
-
-  /* ── Panels (glassmorphism-inspired) ────────── */
-  .panel {
-    background: rgba(22,27,34,.85);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 16px; transition: border-color .25s;
-  }
-  .panel:hover { border-color: #484f58; }
-  .panel-title {
-    font-size: .7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .08em; color: var(--text-dim); margin-bottom: 12px;
-  }
-
-  /* ── Canvas ─────────────────────────────────── */
-  #canvas-wrap {
-    position: relative; border-radius: var(--radius); overflow: hidden;
-    background: #010409; border: 1px solid var(--border);
-    box-shadow: 0 8px 32px rgba(0,0,0,.6);
-    flex-shrink: 0;
-  }
-  #depth { display: block; width: 100%; height: auto; image-rendering: pixelated; }
-
-  /* ── FPS sparkline ──────────────────────────── */
-  .fps-wrap { display: flex; align-items: center; gap: 12px; }
-  .fps-value { font-size: 1.6rem; font-weight: 800; color: var(--text-bright); min-width: 48px; text-align: right; }
-  #fps-canvas { width: 100%; height: 40px; border-radius: 6px; }
-
-  /* ── Stat grid ──────────────────────────────── */
-  .stat-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .stat { text-align: center; padding: 10px 6px; }
-  .stat-label { font-size: .6rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); }
-  .stat-value {
-    font-size: 1.05rem; font-weight: 700; color: var(--text-bright);
-    margin-top: 2px; transition: color .3s;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-
-  /* ── Badges ─────────────────────────────────── */
-  .badge {
-    display: inline-block; padding: 2px 8px; border-radius: 10px;
-    font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
-    transition: background .3s, color .3s;
-  }
-  .badge-green  { background: rgba(63,185,80,.15); color: var(--green); }
-  .badge-gray   { background: rgba(139,148,158,.12); color: var(--text-dim); }
-  .badge-red    { background: rgba(248,81,73,.15); color: var(--red); }
-  .badge-yellow { background: rgba(210,153,34,.15); color: var(--yellow); }
-  .badge-blue   { background: rgba(88,166,255,.15); color: var(--blue); }
-
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
-  .pulse { animation: pulse 1.8s ease-in-out infinite; }
-
-  /* ── Species breakdown ──────────────────────── */
-  .species-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-  .species-tag {
-    font-size: .65rem; padding: 2px 7px; border-radius: 6px;
-    background: rgba(88,166,255,.1); color: var(--blue);
-  }
-
-  /* ── Controls ───────────────────────────────── */
-  .ctrl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-  .ctrl-row:last-child { margin-bottom: 0; }
-  .ctrl-label { font-size: .7rem; color: var(--text-dim); min-width: 70px; flex-shrink: 0; }
-
-  select, .btn {
-    font-family: inherit; font-size: .72rem; border-radius: 6px;
-    border: 1px solid var(--border); background: var(--bg); color: var(--text);
-    padding: 5px 10px; cursor: pointer; transition: border-color .2s, background .2s;
-  }
-  select:focus, .btn:focus { outline: none; border-color: var(--blue); }
-  select:hover, .btn:hover { border-color: #484f58; }
-
-  .btn { font-weight: 600; }
-  .btn:active { transform: scale(.96); }
-  .btn-primary { background: rgba(88,166,255,.15); color: var(--blue); border-color: rgba(88,166,255,.3); }
-  .btn-primary:hover { background: rgba(88,166,255,.25); }
-  .btn-success { background: rgba(63,185,80,.15); color: var(--green); border-color: rgba(63,185,80,.3); }
-  .btn-success:hover { background: rgba(63,185,80,.25); }
-  .btn-danger  { background: rgba(248,81,73,.12); color: var(--red); border-color: rgba(248,81,73,.25); }
-  .btn-danger:hover  { background: rgba(248,81,73,.22); }
-  .btn-warn    { background: rgba(210,153,34,.12); color: var(--yellow); border-color: rgba(210,153,34,.25); }
-  .btn-warn:hover    { background: rgba(210,153,34,.22); }
-
-  .btn-toggle { position: relative; min-width: 52px; }
-  .btn-toggle.active { background: rgba(63,185,80,.18); color: var(--green); border-color: rgba(63,185,80,.35); }
-
-  .game-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-  .speed-btns { display: flex; gap: 4px; }
-  .speed-btns .btn { padding: 5px 8px; font-size: .7rem; }
-
-  /* ── Responsive ─────────────────────────────── */
-  @media (max-width: 900px) {
-    .main { flex-direction: column; }
-    .view-col, .sidebar-col { flex: none; width: 100%; padding: 12px; }
-    .sidebar-col { padding-left: 12px; }
-  }
-</style>
+<link rel="preload" href="/assets/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/app.css">
 </head>
 <body>
 
-<header>
-  <h1>🏜️ DuneBox Dashboard</h1>
-  <div class="conn-group">
-    <div class="conn-dot" id="conn-dot"></div>
-    <span class="conn-label" id="conn-label">Disconnected</span>
-    <input id="ws-url" type="text" value="ws://localhost:8765" placeholder="ws://host:port">
+<header class="topbar">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2 18c3-5 5-7 8-7s4 3 6 3 4-2 6-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M2 22c3-3 5-4 8-4s4 2 6 2 4-1 6-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity=".5"/>
+    </svg>
+    <span class="brand-name">DuneBox</span>
   </div>
+
+  <div class="topbar-status">
+    <span class="status" id="sensor-status" data-tone="idle">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-text">Sensor: waiting</span>
+    </span>
+    <span class="status" id="db-link-status" data-tone="idle">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-text">DuneBox: not linked</span>
+    </span>
+    <span class="status" id="conn-status" data-tone="idle" role="status" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-text">Connecting…</span>
+    </span>
+  </div>
+
+  <button class="btn btn-secondary" id="pair-btn" type="button" popovertarget="pair-popover">
+    Open on a tablet
+  </button>
 </header>
 
-<div class="main">
-  <!-- ── Left: live view ─────────────────────── -->
-  <div class="view-col">
-    <div id="canvas-wrap">
-      <canvas id="depth" width="640" height="480"></canvas>
-    </div>
-
-    <!-- FPS sparkline -->
-    <div class="panel">
-      <div class="panel-title">Performance</div>
-      <div class="fps-wrap">
-        <div class="fps-value" id="fps-val">—</div>
-        <canvas id="fps-canvas"></canvas>
-      </div>
-    </div>
-
-    <!-- Game HUD -->
-    <div class="panel" id="game-panel" style="display:none">
-      <div class="panel-title">Active Game</div>
-      <div class="stat-grid">
-        <div class="stat"><div class="stat-label">Mode</div><div class="stat-value" id="g-mode">—</div></div>
-        <div class="stat"><div class="stat-label">Score</div><div class="stat-value" id="g-score">—</div></div>
-        <div class="stat"><div class="stat-label">Time Left</div><div class="stat-value" id="g-time">—</div></div>
-        <div class="stat"><div class="stat-label">Status</div><div class="stat-value" id="g-status">—</div></div>
-      </div>
-    </div>
+<div class="banner" id="offline-banner" hidden>
+  <div class="banner-body">
+    <strong>Can't reach the sandbox.</strong>
+    <span>On the sandbox PC, open sandcam and press <kbd>U</kbd> to turn on the dashboard. Trying <code id="offline-url"></code>.</span>
   </div>
+  <button class="btn btn-secondary" id="retry-btn" type="button">Retry now</button>
+</div>
 
-  <!-- ── Right: stats + controls ─────────────── -->
-  <div class="sidebar-col">
+<form class="pin-gate" id="pin-gate" hidden>
+  <h1>Enter the dashboard PIN</h1>
+  <p>The PIN is shown on the sandbox screen when you press <kbd>U</kbd>, and saved as <code>dashboard_pin</code> in <code>sandcam-settings.json</code>.</p>
+  <label class="field">
+    <span class="field-label">PIN</span>
+    <input id="pin-input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="12" required>
+  </label>
+  <p class="field-error" id="pin-error" role="alert"></p>
+  <button class="btn btn-primary" type="submit">Connect</button>
+</form>
 
-    <!-- Stats -->
-    <div class="panel">
-      <div class="panel-title">Status</div>
-      <div class="stat-grid">
-        <div class="stat">
-          <div class="stat-label">Creatures</div>
-          <div class="stat-value" id="s-creatures">—</div>
-          <div class="species-list" id="species-list"></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Theme</div>
-          <div class="stat-value" id="s-theme">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Water</div>
-          <div class="stat-value" id="s-water"><span class="badge badge-gray">OFF</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Water Coverage</div>
-          <div class="stat-value" id="s-water-cov">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Lava</div>
-          <div class="stat-value" id="s-lava"><span class="badge badge-gray">OFF</span></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Sound</div>
-          <div class="stat-value" id="s-sound"><span class="badge badge-green">ON</span></div>
-        </div>
+<main class="layout" id="app">
+  <section class="view" aria-labelledby="view-title">
+    <div class="view-head">
+      <h2 id="view-title">Live sand</h2>
+      <span class="view-meta" id="view-meta">Waiting for frames</span>
+    </div>
+    <div class="view-frame">
+      <canvas id="depth" width="640" height="480" role="img" aria-label="Live elevation map of the sand"></canvas>
+      <div class="view-empty" id="view-empty">
+        <p>The live view appears here once the sandbox is connected.</p>
       </div>
     </div>
+    <dl class="facts">
+      <div><dt>Sensor</dt><dd id="f-sensor">–</dd></div>
+      <div><dt>Sandbox frame rate</dt><dd class="num" id="f-fps">–</dd></div>
+      <div><dt>Below sea level</dt><dd class="num" id="f-sea">–</dd></div>
+      <div><dt>Running for</dt><dd class="num" id="f-uptime">–</dd></div>
+    </dl>
+    <section class="activity" id="activity" aria-labelledby="activity-title">
+      <h2 id="activity-title">Activity</h2>
+      <ol class="activity-list" id="activity-list"></ol>
+      <p class="activity-empty" id="activity-empty">Actions you take here, and what the sandbox said back, show up in this list.</p>
+    </section>
+  </section>
 
-    <div class="panel">
-      <div class="panel-title">Day / Night</div>
-      <div class="stat-grid">
-        <div class="stat">
-          <div class="stat-label">Phase</div>
-          <div class="stat-value" id="s-dn-phase">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Time of Day</div>
-          <div class="stat-value" id="s-dn-time">—</div>
-        </div>
-      </div>
+  <aside class="controls" aria-label="Sandbox controls">
+    <div class="app-head">
+      <h2>sandcam <span class="app-meta">Python · creatures and games</span></h2>
     </div>
+    <fieldset class="group" id="sandcam-controls" disabled>
+      <legend class="group-title">World</legend>
 
-    <div class="panel">
-      <div class="panel-title">System</div>
-      <div class="stat-grid">
-        <div class="stat">
-          <div class="stat-label">Sensor</div>
-          <div class="stat-value" id="s-sensor">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Sensor Status</div>
-          <div class="stat-value" id="s-sensor-status">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Clients</div>
-          <div class="stat-value" id="s-clients">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Uptime</div>
-          <div class="stat-value" id="s-uptime">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Stream FPS</div>
-          <div class="stat-value" id="s-sfps">—</div>
+      <div class="row row-stack">
+        <span class="row-label" id="theme-label">Color theme</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="theme-label" id="theme-group"></div>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Contour lines <kbd>C</kbd></span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_contours" data-key="c" aria-label="Contour lines"></button>
+      </div>
+      <div class="row">
+        <span class="row-label">Creatures <kbd>G</kbd></span>
+        <div class="row-end">
+          <button class="btn btn-ghost btn-sm" type="button" data-action="cycle_creature_set" id="creature-set" aria-label="Change creature set">Modern</button>
+          <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_creatures" data-key="g" aria-label="Creatures"></button>
         </div>
       </div>
+      <div class="row">
+        <span class="row-label">Plants grow <kbd>E</kbd></span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_ecosystem" data-key="e" aria-label="Plants grow (ecosystem)"></button>
+      </div>
+      <div class="row">
+        <span class="row-label">Day and night <kbd>N</kbd></span>
+        <div class="row-end">
+          <div class="stepper" role="group" aria-label="Cycle speed">
+            <button class="btn btn-ghost btn-icon" type="button" data-action="cycle_speed" data-value="down" aria-label="Slower">−</button>
+            <span class="num stepper-value" id="dn-speed" aria-live="polite">1.0×</span>
+            <button class="btn btn-ghost btn-icon" type="button" data-action="cycle_speed" data-value="up" aria-label="Faster">+</button>
+          </div>
+          <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_day_night" data-key="n" aria-label="Day and night cycle"></button>
+        </div>
+      </div>
+      <p class="row-hint" id="dn-phase"></p>
+      <div class="row">
+        <span class="row-label">Sound <kbd>S</kbd></span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_sound" data-key="s" aria-label="Sound" id="sound-switch"></button>
+      </div>
+    </fieldset>
+
+    <fieldset class="group" id="events-controls" disabled>
+      <legend class="group-title">Events</legend>
+      <div class="button-row">
+        <button class="btn btn-secondary" type="button" data-action="erupt_volcano" data-key="v">Erupt volcano <kbd>V</kbd></button>
+        <button class="btn btn-secondary" type="button" data-action="trigger_earthquake" data-key="k">Earthquake <kbd>K</kbd></button>
+      </div>
+      <p class="row-hint" id="volcano-hint">No volcanoes yet. Erupting places one at the centre.</p>
+    </fieldset>
+
+    <fieldset class="group" id="games-controls" disabled>
+      <legend class="group-title">Games</legend>
+      <div class="game-live" id="game-live" hidden>
+        <div class="game-live-head">
+          <span class="game-live-name" id="g-name">–</span>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="end_game">End game</button>
+        </div>
+        <dl class="game-live-stats">
+          <div><dt>Score</dt><dd class="num" id="g-score">–</dd></div>
+          <div><dt>Time left</dt><dd class="num" id="g-time">–</dd></div>
+        </dl>
+      </div>
+      <ul class="game-list" id="game-list"></ul>
+    </fieldset>
+
+    <fieldset class="group" id="system-controls" disabled>
+      <legend class="group-title">Setup</legend>
+      <div class="button-row">
+        <button class="btn btn-secondary" type="button" data-action="calibrate_depth" id="calibrate-btn">Calibrate depth</button>
+        <button class="btn btn-secondary" type="button" data-action="save_snapshot">Save snapshot</button>
+        <button class="btn btn-secondary" type="button" data-action="reset_terrain" id="reset-btn" hidden>Reset terrain</button>
+      </div>
+      <p class="row-hint" id="calibrate-hint">Calibrate with the sand flat and hands clear. Current range <span class="num" id="depth-range">–</span>.</p>
+    </fieldset>
+
+    <div class="app-head">
+      <h2>DuneBox <span class="app-meta">C++ · water and lava</span></h2>
+      <span class="status" id="db-state" data-tone="idle">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="status-text">Not linked</span>
+      </span>
     </div>
-
-    <!-- Controls -->
-    <div class="panel">
-      <div class="panel-title">Controls</div>
-
-      <div class="ctrl-row">
-        <span class="ctrl-label">Theme</span>
-        <select id="c-theme">
-          <option value="terrain">Terrain</option>
-          <option value="heat">Heat</option>
-          <option value="greyscale">Greyscale</option>
-          <option value="desert">Desert</option>
-        </select>
+    <fieldset class="group" id="dunebox-controls" disabled>
+      <legend class="group-title">Simulation</legend>
+      <div class="empty" id="dunebox-empty">
+        <p><strong>Not linked.</strong> Start DuneBox (Magic-Sand) on this PC. It links to sandcam automatically and its water, lava and theme controls appear here.</p>
       </div>
-
-      <div class="ctrl-row">
-        <span class="ctrl-label">Toggles</span>
-        <button class="btn btn-toggle" id="c-water" title="Toggle water/contours">💧 Water</button>
-        <button class="btn btn-toggle" id="c-lava" title="Toggle lava">🌋 Lava</button>
-        <button class="btn btn-toggle" id="c-sound" title="Toggle sound">🔊 Sound</button>
-        <button class="btn btn-toggle" id="c-daynight" title="Toggle day/night cycle">🌗 Cycle</button>
-      </div>
-
-      <div class="ctrl-row">
-        <span class="ctrl-label">Cycle Speed</span>
-        <div class="speed-btns">
-          <button class="btn" id="c-speed-down" title="Slow down cycle">−</button>
-          <button class="btn" id="c-speed-up" title="Speed up cycle">+</button>
+      <div id="dunebox-live" hidden>
+        <div class="row">
+          <span class="row-label">Water simulation</span>
+          <button class="switch" type="button" role="switch" aria-checked="false" data-target="dunebox" data-action="toggle_water" aria-label="Water simulation"></button>
+        </div>
+        <div class="row">
+          <span class="row-label">Lava instead of water</span>
+          <button class="switch" type="button" role="switch" aria-checked="false" data-target="dunebox" data-action="toggle_lava" aria-label="Lava mode"></button>
+        </div>
+        <div class="row">
+          <span class="row-label">Day and night</span>
+          <button class="switch" type="button" role="switch" aria-checked="false" data-target="dunebox" data-action="toggle_day_night" aria-label="DuneBox day and night"></button>
+        </div>
+        <div class="button-row">
+          <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="cycle_theme">Next theme <span class="btn-meta" id="db-theme"></span></button>
+          <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="erupt_volcano">Erupt volcano</button>
+          <button class="btn btn-primary" type="button" data-target="dunebox" data-action="start_app" id="db-start" hidden>Start sandbox</button>
         </div>
       </div>
+    </fieldset>
 
-      <div class="ctrl-row">
-        <span class="ctrl-label">Games</span>
-        <div class="game-btns">
-          <button class="btn btn-primary" data-game="dam">F1 Dam</button>
-          <button class="btn btn-danger"  data-game="volcano">F2 Volcano</button>
-          <button class="btn btn-primary" data-game="watershed">F3 Water</button>
-          <button class="btn btn-warn"    data-game="biome">F4 Biome</button>
-        </div>
-      </div>
+    <p class="shortcut-hint">Press <kbd>?</kbd> for keyboard shortcuts.</p>
+  </aside>
+</main>
+
+<div class="popover" id="pair-popover" popover>
+  <h2 class="popover-title">Open on a tablet</h2>
+  <div id="pair-lan">
+    <img class="qr" id="pair-qr" hidden alt="QR code linking to this dashboard" width="168" height="168">
+    <p>Scan with a phone or tablet on the same Wi-Fi, or open:</p>
+    <div class="copy-field">
+      <code id="pair-url">–</code>
+      <button class="btn btn-ghost btn-sm" type="button" id="copy-url">Copy</button>
     </div>
+    <p class="pin-line" id="pair-pin" hidden>PIN <span class="num" id="pair-pin-value"></span></p>
+  </div>
+  <div id="pair-local" hidden>
+    <p>This dashboard only accepts connections from the sandbox PC.</p>
+    <p>To use a tablet, set <code>"depth_server_host": "0.0.0.0"</code> in <code>sandcam-settings.json</code> and restart sandcam. A PIN keeps it private.</p>
   </div>
 </div>
 
-<script>
-(function() {
-  // ── DOM refs ───────────────────────────────────────────
-  const canvas    = document.getElementById('depth');
-  const ctx       = canvas.getContext('2d');
-  const connDot   = document.getElementById('conn-dot');
-  const connLabel = document.getElementById('conn-label');
-  const urlInput  = document.getElementById('ws-url');
-  const fpsCanvas = document.getElementById('fps-canvas');
-  const fpsCtx    = fpsCanvas.getContext('2d');
+<div class="popover" id="keys-popover" popover>
+  <h2 class="popover-title">Keyboard shortcuts</h2>
+  <dl class="keys">
+    <div><dt><kbd>C</kbd></dt><dd>Contour lines</dd></div>
+    <div><dt><kbd>G</kbd></dt><dd>Creatures</dd></div>
+    <div><dt><kbd>E</kbd></dt><dd>Plants grow</dd></div>
+    <div><dt><kbd>N</kbd></dt><dd>Day and night</dd></div>
+    <div><dt><kbd>S</kbd></dt><dd>Sound</dd></div>
+    <div><dt><kbd>V</kbd></dt><dd>Erupt volcano</dd></div>
+    <div><dt><kbd>K</kbd></dt><dd>Earthquake</dd></div>
+    <div><dt><kbd>1</kbd>–<kbd>4</kbd></dt><dd>Start a game</dd></div>
+    <div><dt><kbd>Esc</kbd></dt><dd>End game</dd></div>
+  </dl>
+</div>
 
-  const el = id => document.getElementById(id);
+<ol class="toasts" id="toasts" aria-live="polite" aria-label="Notifications"></ol>
 
-  // ── State ──────────────────────────────────────────────
-  let ws = null;
-  let frameCount = 0;
-  let lastFpsTime = performance.now();
-  let streamFps = 0;
-  const fpsHistory = new Array(60).fill(0);
-  let currentState = {};
-
-  // ── Connection ─────────────────────────────────────────
-  function setConn(status) {
-    connDot.className = 'conn-dot ' + status;
-    connLabel.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-  }
-
-  function connect() {
-    const url = urlInput.value.trim();
-    if (!url) return;
-    setConn('connecting');
-    try { ws = new WebSocket(url); } catch { setTimeout(connect, 3000); return; }
-    ws.binaryType = 'arraybuffer';
-    ws.onopen  = () => setConn('connected');
-    ws.onmessage = ev => {
-      if (typeof ev.data === 'string') handleState(JSON.parse(ev.data));
-      else handleFrame(ev.data);
-    };
-    ws.onclose = () => { setConn('disconnected'); setTimeout(connect, 2000); };
-    ws.onerror = () => { ws.close(); };
-  }
-
-  function sendCmd(action, value) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'command', action, value }));
-    }
-  }
-
-  // ── State handling ─────────────────────────────────────
-  function handleState(s) {
-    if (s.type && s.type !== 'state') return;
-    currentState = s;
-
-    // FPS
-    if (s.fps != null) {
-      el('fps-val').textContent = Math.round(s.fps);
-      fpsHistory.push(Math.round(s.fps));
-      fpsHistory.shift();
-      drawFpsGraph();
-    }
-
-    // Creatures
-    if (s.creatures != null) {
-      const c = s.creatures;
-      el('s-creatures').textContent = c.total != null ? c.total : c;
-      const list = el('species-list');
-      list.innerHTML = '';
-      if (typeof c === 'object' && c.total != null) {
-        for (const [k, v] of Object.entries(c)) {
-          if (k === 'total' || v === 0) continue;
-          const tag = document.createElement('span');
-          tag.className = 'species-tag';
-          tag.textContent = k + ': ' + v;
-          list.appendChild(tag);
-        }
-      }
-    }
-
-    // Theme
-    if (s.theme != null) {
-      el('s-theme').textContent = s.theme;
-      el('c-theme').value = s.theme;
-    }
-
-    // Water
-    if (s.water_enabled != null) {
-      const on = s.water_enabled;
-      el('s-water').innerHTML = on
-        ? '<span class="badge badge-green pulse">ON</span>'
-        : '<span class="badge badge-gray">OFF</span>';
-      el('c-water').classList.toggle('active', on);
-    }
-    if (s.water_coverage != null) {
-      el('s-water-cov').textContent = (s.water_coverage * 100).toFixed(1) + '%';
-    }
-
-    // Lava
-    if (s.lava_active != null) {
-      const on = s.lava_active;
-      el('s-lava').innerHTML = on
-        ? '<span class="badge badge-red pulse">ACTIVE</span>'
-        : '<span class="badge badge-gray">OFF</span>';
-      el('c-lava').classList.toggle('active', on);
-    }
-
-    // Sound
-    if (s.sound_muted != null) {
-      const muted = s.sound_muted;
-      el('s-sound').innerHTML = muted
-        ? '<span class="badge badge-red">MUTED</span>'
-        : '<span class="badge badge-green">ON</span>';
-      el('c-sound').classList.toggle('active', !muted);
-    }
-
-    // Day/Night
-    if (s.day_night) {
-      const dn = s.day_night;
-      const phaseColors = { day: 'badge-yellow', night: 'badge-blue', dawn: 'badge-warn', dusk: 'badge-warn' };
-      const cls = phaseColors[dn.phase] || 'badge-gray';
-      if (dn.enabled) {
-        el('s-dn-phase').innerHTML = '<span class="badge ' + cls + ' pulse">' + (dn.phase || '—').toUpperCase() + '</span>';
-      } else {
-        el('s-dn-phase').innerHTML = '<span class="badge badge-gray">OFF</span>';
-      }
-      el('s-dn-time').textContent = dn.time != null ? (dn.time * 100).toFixed(0) + '%' : '—';
-      el('c-daynight').classList.toggle('active', dn.enabled);
-    }
-
-    // Game
-    if (s.game) {
-      const g = s.game;
-      const panel = el('game-panel');
-      if (g.active) {
-        panel.style.display = '';
-        el('g-mode').textContent = g.mode || '—';
-        el('g-score').textContent = g.score != null ? g.score : '—';
-        el('g-time').textContent = g.time_left != null ? g.time_left.toFixed(1) + 's' : '∞';
-        el('g-status').innerHTML = '<span class="badge badge-green pulse">PLAYING</span>';
-      } else {
-        panel.style.display = 'none';
-      }
-    }
-
-    // Sensor
-    if (s.sensor) {
-      el('s-sensor').textContent = s.sensor.type || '—';
-      const conn = s.sensor.connected;
-      el('s-sensor-status').innerHTML = conn
-        ? '<span class="badge badge-green">OK</span>'
-        : '<span class="badge badge-red">ERR</span>';
-    }
-
-    // Clients
-    if (s.clients != null) el('s-clients').textContent = s.clients;
-
-    // Uptime
-    if (s.uptime != null) {
-      const u = s.uptime;
-      const h = Math.floor(u / 3600);
-      const m = Math.floor((u % 3600) / 60);
-      const sec = Math.floor(u % 60);
-      el('s-uptime').textContent = (h > 0 ? h + 'h ' : '') + m + 'm ' + sec + 's';
-    }
-  }
-
-  // ── Frame handling ─────────────────────────────────────
-  function handleFrame(buf) {
-    const view = new DataView(buf);
-    const w = view.getUint16(0);
-    const h = view.getUint16(2);
-    const pngData = buf.slice(4);
-
-    const blob = new Blob([pngData], { type: 'image/png' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w; canvas.height = h;
-      }
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
-
-    frameCount++;
-    const now = performance.now();
-    const elapsed = now - lastFpsTime;
-    if (elapsed >= 1000) {
-      streamFps = Math.round(frameCount * 1000 / elapsed);
-      el('s-sfps').textContent = streamFps;
-      frameCount = 0;
-      lastFpsTime = now;
-    }
-  }
-
-  // ── FPS sparkline graph ────────────────────────────────
-  function drawFpsGraph() {
-    const c = fpsCanvas;
-    c.width  = c.clientWidth  * devicePixelRatio;
-    c.height = c.clientHeight * devicePixelRatio;
-    fpsCtx.clearRect(0, 0, c.width, c.height);
-
-    const max = Math.max(15, ...fpsHistory);
-    const step = c.width / (fpsHistory.length - 1);
-
-    // filled area
-    fpsCtx.beginPath();
-    fpsCtx.moveTo(0, c.height);
-    for (let i = 0; i < fpsHistory.length; i++) {
-      const y = c.height - (fpsHistory[i] / max) * c.height;
-      fpsCtx.lineTo(i * step, y);
-    }
-    fpsCtx.lineTo(c.width, c.height);
-    fpsCtx.closePath();
-    const grad = fpsCtx.createLinearGradient(0, 0, 0, c.height);
-    grad.addColorStop(0, 'rgba(88,166,255,.35)');
-    grad.addColorStop(1, 'rgba(88,166,255,.03)');
-    fpsCtx.fillStyle = grad;
-    fpsCtx.fill();
-
-    // line
-    fpsCtx.beginPath();
-    for (let i = 0; i < fpsHistory.length; i++) {
-      const y = c.height - (fpsHistory[i] / max) * c.height;
-      if (i === 0) fpsCtx.moveTo(0, y);
-      else fpsCtx.lineTo(i * step, y);
-    }
-    fpsCtx.strokeStyle = 'rgba(88,166,255,.85)';
-    fpsCtx.lineWidth = 1.5 * devicePixelRatio;
-    fpsCtx.stroke();
-  }
-
-  // ── Control event handlers ─────────────────────────────
-  el('c-theme').addEventListener('change', e => sendCmd('set_theme', e.target.value));
-  el('c-water').addEventListener('click', () => sendCmd('toggle_water'));
-  el('c-lava').addEventListener('click',  () => sendCmd('toggle_lava'));
-  el('c-sound').addEventListener('click', () => sendCmd('toggle_sound'));
-  el('c-daynight').addEventListener('click', () => sendCmd('toggle_day_night'));
-  el('c-speed-down').addEventListener('click', () => sendCmd('cycle_speed', 'down'));
-  el('c-speed-up').addEventListener('click',   () => sendCmd('cycle_speed', 'up'));
-
-  document.querySelectorAll('[data-game]').forEach(btn => {
-    btn.addEventListener('click', () => sendCmd('start_game', btn.dataset.game));
-  });
-
-  urlInput.addEventListener('change', () => { if (ws) ws.close(); });
-
-  // ── Start ──────────────────────────────────────────────
-  connect();
-})();
-</script>
+<script src="/assets/app.js" defer></script>
 </body>
 </html>

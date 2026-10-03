@@ -752,3 +752,8 @@ class GameManager:
     @staticmethod
     def get_available_modes() -> list[str]:
         return list(_MODE_REGISTRY.keys())
+
+    @staticmethod
+    def get_mode_names() -> dict[str, str]:
+        """Mode id -> display name, e.g. {"dam": "Build a Dam"}."""
+        return {key: cls.name for key, cls in _MODE_REGISTRY.items()}
