@@ -7,6 +7,7 @@ dependencies = [
     "numpy>=2.4.4",
     "opencv-contrib-python>=4.11.0.86",
     "pygame>=2.6.1",
+    "pyserial>=3.5",
     "scipy>=1.17.1",
     "segno>=1.6",
     "websockets>=13.0",

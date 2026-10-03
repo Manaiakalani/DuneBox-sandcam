@@ -49,6 +49,10 @@ _MAX_PIN_FAILURES = 5
 _PIN_LOCKOUT_SECONDS = 60.0
 
 
+# Fields a dashboard command may carry; anything else is dropped
+COMMAND_FIELDS = ("type", "id", "action", "value", "target", "button")
+
+
 def is_loopback(host: str) -> bool:
     return host.strip().lower() in _LOOPBACK_HOSTS
 
@@ -406,9 +410,10 @@ class DepthStreamServer:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(data, dict) and data.get("type") == "command":
+                    cmd = {k: data[k] for k in COMMAND_FIELDS if k in data}
                     with self._lock:
                         if len(self._command_queue) < 32:
-                            self._command_queue.append(data)
+                            self._command_queue.append(cmd)
         except Exception:
             pass
         finally:

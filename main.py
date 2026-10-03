@@ -42,6 +42,7 @@ from ai_guide import (
     build_async_narrator,
 )
 from bridge import AppBridge
+from buttons import BUTTON_ACTIONS, ButtonInput, button_for_key, button_label
 from creatures import MARKER_DINO_SPAWN, MARKER_EXTINCTION, CreatureManager
 from day_night import DayNightCycle
 from dem_loader import export_snapshot, list_snapshots, load_snapshot
@@ -476,6 +477,9 @@ def main() -> int:
         )
 
     reconnector = SensorReconnector(_connect_configured_sensor)
+    button_input = ButtonInput(
+        config.button_map, serial_enabled=config.buttons_serial, port=config.buttons_port
+    )
     snapshots: list[dict] = []
     snapshots_dirty = True
     snapshots_checked = 0.0
@@ -525,6 +529,12 @@ def main() -> int:
                 consumed = sidebar.handle_event(event, config)
                 if consumed:
                     continue
+
+                if event.type == pygame.KEYDOWN:
+                    button = button_for_key(pygame.key.name(event.key))
+                    if button is not None:
+                        button_input.press(button)
+                        continue
 
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_q):
@@ -1048,6 +1058,7 @@ def main() -> int:
                         "reconnect_attempts": reconnector.attempts,
                     },
                     "kiosk": kiosk.status(datetime.now()),
+                    "buttons": button_input.status(),
                     "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
                     "dunebox": dunebox_state,
                     "dashboard": {
@@ -1058,221 +1069,264 @@ def main() -> int:
                     "uptime": round(time.monotonic() - app_start_time, 1),
                 })
 
-                # ── process dashboard commands ────────────────────────
-                # Every command is acknowledged with {"type": "ack", "id", "ok",
-                # "message"} so the dashboard can confirm or explain the result.
-                for cmd in depth_server.poll_commands():
-                    action = str(cmd.get("action", ""))
-                    value = cmd.get("value")
-                    target = cmd.get("target", "sandcam")
-                    ok, message = True, ""
+            # ── commands: dashboard and physical buttons ──────────────
+            # Dashboard commands are acknowledged with {"type": "ack", "id", "ok",
+            # "message"} so it can confirm or explain the result; button presses
+            # flash their result on the sand and show in the dashboard's activity.
+            commands = depth_server.poll_commands() if depth_server_enabled else []
+            commands += button_input.poll()
+            if commands:
+                sensor_name = source.get_sensor_name()
+                bridge_up = bridge_enabled and app_bridge.is_connected()
+            for cmd in commands:
+                action = str(cmd.get("action", ""))
+                value = cmd.get("value")
+                target = cmd.get("target", "sandcam")
+                ok, message = True, ""
 
-                    if target == "dunebox":
-                        if not bridge_up:
-                            ok, message = False, "DuneBox (C++) isn't connected. Start it on this PC."
-                        elif action not in DUNEBOX_COMMANDS:
-                            ok, message = False, f"Unknown DuneBox command: {action}"
-                        elif action == "set_evaporation" and value not in EVAPORATION_LEVELS:
-                            ok, message = False, f"Unknown evaporation level: {value}"
-                        else:
-                            bmsg_out = {"type": "command", "action": action}
-                            if value is not None:
-                                bmsg_out["value"] = value
-                            app_bridge.send(bmsg_out)
-                            message = DUNEBOX_COMMANDS[action]
-                    elif action == "set_theme":
-                        if value in SCHEMES:
-                            config.colour_scheme = value
-                            config.request_save()
-                            message = f"Theme: {value}"
-                        else:
-                            ok, message = False, f"Unknown theme: {value}"
-                    elif action == "toggle_contours":
-                        config.show_contours = not config.show_contours
+                if target == "dunebox":
+                    if not bridge_up:
+                        ok, message = False, "DuneBox (C++) isn't connected. Start it on this PC."
+                    elif action not in DUNEBOX_COMMANDS:
+                        ok, message = False, f"Unknown DuneBox command: {action}"
+                    elif action == "set_evaporation" and value not in EVAPORATION_LEVELS:
+                        ok, message = False, f"Unknown evaporation level: {value}"
+                    else:
+                        bmsg_out = {"type": "command", "action": action}
+                        if value is not None:
+                            bmsg_out["value"] = value
+                        app_bridge.send(bmsg_out)
+                        message = DUNEBOX_COMMANDS[action]
+                elif action == "set_theme":
+                    if value in SCHEMES:
+                        config.colour_scheme = value
                         config.request_save()
-                        message = f"Contour lines {'on' if config.show_contours else 'off'}"
-                    elif action == "toggle_contour_labels":
-                        config.contour_labels = not config.contour_labels
+                        message = f"Theme: {value}"
+                    else:
+                        ok, message = False, f"Unknown theme: {value}"
+                elif action == "toggle_contours":
+                    config.show_contours = not config.show_contours
+                    config.request_save()
+                    message = f"Contour lines {'on' if config.show_contours else 'off'}"
+                elif action == "toggle_contour_labels":
+                    config.contour_labels = not config.contour_labels
+                    config.request_save()
+                    message = f"Elevation labels {'on' if config.contour_labels else 'off'}"
+                elif action == "set_contour_interval":
+                    num = _as_float(value)
+                    if num is None or not 0.02 <= num <= 0.12:
+                        ok, message = False, "Contour spacing must be between 2% and 12%"
+                    else:
+                        config.contour_interval = num
                         config.request_save()
-                        message = f"Elevation labels {'on' if config.contour_labels else 'off'}"
-                    elif action == "set_contour_interval":
-                        num = _as_float(value)
-                        if num is None or not 0.02 <= num <= 0.12:
-                            ok, message = False, "Contour spacing must be between 2% and 12%"
-                        else:
-                            config.contour_interval = num
-                            config.request_save()
-                            message = f"Contour spacing {num * 100:.0f}%"
-                    elif action == "set_sea_level":
-                        num = _as_float(value)
-                        if num is None or not -0.2 <= num <= 0.2:
-                            ok, message = False, "Sea level must be between -20% and +20%"
-                        else:
-                            config.sea_level_offset = num
-                            config.request_save()
-                            message = f"Sea level {num * 100:+.0f}%"
-                    elif action == "set_smoothing":
-                        if apply_smoothing_preset(config, str(value)):
-                            message = f"Smoothing: {SMOOTHING_LABELS[str(value)]}"
-                        else:
-                            ok, message = False, f"Unknown smoothing preset: {value}"
-                    elif action == "toggle_creatures":
-                        config.show_creatures = not config.show_creatures
+                        message = f"Contour spacing {num * 100:.0f}%"
+                elif action == "set_sea_level":
+                    num = _as_float(value)
+                    if num is None or not -0.2 <= num <= 0.2:
+                        ok, message = False, "Sea level must be between -20% and +20%"
+                    else:
+                        config.sea_level_offset = num
                         config.request_save()
-                        message = f"Creatures {'on' if config.show_creatures else 'off'}"
-                    elif action == "cycle_creature_set":
-                        message = f"Creature set: {creatures.cycle_creature_set()}"
-                    elif action == "toggle_ecosystem":
-                        eco_enabled = not eco_enabled
-                        eco_mgr.set_enabled(eco_enabled)
-                        message = f"Ecosystem {'on' if eco_enabled else 'off'}"
-                    elif action == "toggle_sound":
-                        muted = sound_mgr.toggle_mute()
-                        config.sound_enabled = not muted
-                        config.request_save()
-                        message = "Sound muted" if muted else "Sound on"
-                    elif action == "toggle_day_night":
-                        day_night_enabled = not day_night_enabled
-                        if not day_night_enabled:
-                            prev_day_night_phase = ""
-                        message = f"Day/night cycle {'on' if day_night_enabled else 'off'}"
-                    elif action == "pause_day_night":
-                        day_night.toggle_pause()
-                        message = "Cycle paused" if day_night.is_paused() else "Cycle resumed"
-                    elif action == "cycle_speed":
-                        delta = 0.5 if value == "up" else -0.5
-                        message = f"Cycle speed {day_night.adjust_speed(delta):.1f}x"
-                    elif action == "erupt_volcano":
-                        idx = volcano_mgr.place_volcano(render_w // 2, render_h // 2)
-                        volcano_mgr.trigger_eruption(idx)
-                        message = "Volcano erupting at the centre"
-                    elif action == "trigger_earthquake":
-                        earthquake_det.force_trigger(render_w // 2, render_h // 2)
-                        message = "Earthquake triggered"
-                    elif action == "start_game":
-                        if value in GameManager.get_available_modes():
-                            game_mgr.start_game(value, source.get_frame())
-                            message = f"Started {GameManager.get_mode_names()[value]}"
+                        message = f"Sea level {num * 100:+.0f}%"
+                elif action == "set_smoothing":
+                    if apply_smoothing_preset(config, str(value)):
+                        message = f"Smoothing: {SMOOTHING_LABELS[str(value)]}"
+                    else:
+                        ok, message = False, f"Unknown smoothing preset: {value}"
+                elif action == "toggle_creatures":
+                    config.show_creatures = not config.show_creatures
+                    config.request_save()
+                    message = f"Creatures {'on' if config.show_creatures else 'off'}"
+                elif action == "cycle_creature_set":
+                    message = f"Creature set: {creatures.cycle_creature_set()}"
+                elif action == "toggle_ecosystem":
+                    eco_enabled = not eco_enabled
+                    eco_mgr.set_enabled(eco_enabled)
+                    message = f"Ecosystem {'on' if eco_enabled else 'off'}"
+                elif action == "toggle_sound":
+                    muted = sound_mgr.toggle_mute()
+                    config.sound_enabled = not muted
+                    config.request_save()
+                    message = "Sound muted" if muted else "Sound on"
+                elif action == "toggle_day_night":
+                    day_night_enabled = not day_night_enabled
+                    if not day_night_enabled:
+                        prev_day_night_phase = ""
+                    message = f"Day/night cycle {'on' if day_night_enabled else 'off'}"
+                elif action == "pause_day_night":
+                    day_night.toggle_pause()
+                    message = "Cycle paused" if day_night.is_paused() else "Cycle resumed"
+                elif action == "cycle_speed":
+                    delta = 0.5 if value == "up" else -0.5
+                    message = f"Cycle speed {day_night.adjust_speed(delta):.1f}x"
+                elif action == "erupt_volcano":
+                    idx = volcano_mgr.place_volcano(render_w // 2, render_h // 2)
+                    volcano_mgr.trigger_eruption(idx)
+                    message = "Volcano erupting at the centre"
+                elif action == "trigger_earthquake":
+                    earthquake_det.force_trigger(render_w // 2, render_h // 2)
+                    message = "Earthquake triggered"
+                elif action == "start_game":
+                    if value in GameManager.get_available_modes():
+                        game_mgr.start_game(value, source.get_frame())
+                        message = f"Started {GameManager.get_mode_names()[value]}"
+                    else:
+                        ok, message = False, f"Unknown game: {value}"
+                elif action == "end_game":
+                    if game_mgr.is_active():
+                        game_mgr.end_game()
+                        message = "Game ended"
+                    else:
+                        ok, message = False, "No game is running"
+                elif action == "save_snapshot":
+                    try:
+                        saved = export_snapshot(
+                            source.get_frame(),
+                            depth_range_mm=(config.min_depth_mm, config.max_depth_mm),
+                            image=scene,
+                        )
+                        snapshots_dirty = True
+                        message = f"Saved {saved[0].stem} (terrain, DEM and image)"
+                    except (OSError, ValueError, pygame.error) as exc:
+                        ok, message = False, f"Couldn't save snapshot: {exc}"
+                elif action == "load_snapshot":
+                    try:
+                        data = load_snapshot(str(value))
+                    except (OSError, ValueError) as exc:
+                        ok, message = False, f"Couldn't load terrain: {exc}"
+                    else:
+                        if hasattr(source, "load_terrain"):
+                            source.load_terrain(data)
+                            message = f"Loaded {value} into the simulator"
                         else:
-                            ok, message = False, f"Unknown game: {value}"
-                    elif action == "end_game":
-                        if game_mgr.is_active():
-                            game_mgr.end_game()
-                            message = "Game ended"
-                        else:
-                            ok, message = False, "No game is running"
-                    elif action == "save_snapshot":
-                        try:
-                            saved = export_snapshot(
-                                source.get_frame(),
-                                depth_range_mm=(config.min_depth_mm, config.max_depth_mm),
-                                image=scene,
+                            game_mgr.start_game(
+                                "challenge", source.get_frame(),
+                                target=data, target_name=f"Saved {str(value)[8:]}",
                             )
-                            snapshots_dirty = True
-                            message = f"Saved {saved[0].stem} (terrain, DEM and image)"
-                        except (OSError, ValueError, pygame.error) as exc:
-                            ok, message = False, f"Couldn't save snapshot: {exc}"
-                    elif action == "load_snapshot":
+                            message = f"Rebuild {value}: dig red areas, fill blue ones"
+                elif action == "start_challenge":
+                    if value in BUILTIN_TARGETS:
+                        game_mgr.start_game("challenge", source.get_frame(), target=value)
+                        message = f"Terrain challenge: {BUILTIN_TARGETS[value]}"
+                    else:
                         try:
                             data = load_snapshot(str(value))
                         except (OSError, ValueError) as exc:
                             ok, message = False, f"Couldn't load terrain: {exc}"
                         else:
-                            if hasattr(source, "load_terrain"):
-                                source.load_terrain(data)
-                                message = f"Loaded {value} into the simulator"
-                            else:
-                                game_mgr.start_game(
-                                    "challenge", source.get_frame(),
-                                    target=data, target_name=f"Saved {str(value)[8:]}",
-                                )
-                                message = f"Rebuild {value}: dig red areas, fill blue ones"
-                    elif action == "start_challenge":
-                        if value in BUILTIN_TARGETS:
-                            game_mgr.start_game("challenge", source.get_frame(), target=value)
-                            message = f"Terrain challenge: {BUILTIN_TARGETS[value]}"
-                        else:
-                            try:
-                                data = load_snapshot(str(value))
-                            except (OSError, ValueError) as exc:
-                                ok, message = False, f"Couldn't load terrain: {exc}"
-                            else:
-                                game_mgr.start_game(
-                                    "challenge", source.get_frame(),
-                                    target=data, target_name=f"Saved {str(value)[8:]}",
-                                )
-                                message = f"Terrain challenge: rebuild {value}"
-                    elif action == "toggle_timelapse":
-                        try:
-                            message = _toggle_timelapse(timelapse)
-                        except OSError as exc:
-                            ok, message = False, f"Couldn't start timelapse: {exc}"
-                    elif action == "toggle_schedule":
-                        config.kiosk_schedule = not config.kiosk_schedule
-                        kiosk.configure(enabled=config.kiosk_schedule)
+                            game_mgr.start_game(
+                                "challenge", source.get_frame(),
+                                target=data, target_name=f"Saved {str(value)[8:]}",
+                            )
+                            message = f"Terrain challenge: rebuild {value}"
+                elif action == "toggle_timelapse":
+                    try:
+                        message = _toggle_timelapse(timelapse)
+                    except OSError as exc:
+                        ok, message = False, f"Couldn't start timelapse: {exc}"
+                elif action == "toggle_schedule":
+                    config.kiosk_schedule = not config.kiosk_schedule
+                    kiosk.configure(enabled=config.kiosk_schedule)
+                    config.request_save()
+                    message = f"Opening hours {'on' if config.kiosk_schedule else 'off'}"
+                elif action == "set_hours":
+                    if isinstance(value, str) and parse_hours(value):
+                        config.kiosk_hours = value
+                        kiosk.configure(hours=value)
                         config.request_save()
-                        message = f"Opening hours {'on' if config.kiosk_schedule else 'off'}"
-                    elif action == "set_hours":
-                        if isinstance(value, str) and parse_hours(value):
-                            config.kiosk_hours = value
-                            kiosk.configure(hours=value)
-                            config.request_save()
-                            message = f"Open {value.replace('-', '–')}"
-                        else:
-                            ok, message = False, "Opening must be before closing, as HH:MM-HH:MM"
-                    elif action == "set_days":
-                        days = "".join(sorted(set(str(value or "")) & set("0123456")))
-                        if days:
-                            config.kiosk_days = days
-                            kiosk.configure(days=days)
-                            config.request_save()
-                            message = "Open days updated"
-                        else:
-                            ok, message = False, "Pick at least one day"
-                    elif action == "wake":
-                        kiosk.wake()
-                        message = "Awake until the next opening or closing time"
-                    elif action == "set_projector_host":
-                        host = str(value or "").strip()
-                        if host and not re.fullmatch(r"[A-Za-z0-9.\-:]{1,253}", host):
-                            ok, message = False, f"Not an IP address or host name: {host}"
-                        else:
-                            config.projector_host = host
-                            kiosk.set_projector_host(host, config.projector_password)
-                            config.request_save()
-                            message = f"Projector: {host}" if host else "Projector control off"
-                    elif action == "projector_power":
-                        if value not in ("on", "off"):
-                            ok, message = False, f"Unknown projector power: {value}"
-                        elif not kiosk.set_projector(value == "on"):
-                            ok, message = False, "Add the projector's IP address first"
-                        else:
-                            message = f"Turning the projector {value}"
-                    elif action == "toggle_auto_reconnect":
-                        config.sensor_auto_reconnect = not config.sensor_auto_reconnect
-                        config.request_save()
-                        message = f"Sensor auto-reconnect {'on' if config.sensor_auto_reconnect else 'off'}"
-                    elif action == "calibrate_depth":
-                        if not hasattr(source, "auto_calibrate_flat_surface"):
-                            ok, message = False, f"{sensor_name} can't auto-calibrate depth"
-                        else:
-                            result = source.auto_calibrate_flat_surface()
-                            if result:
-                                config.min_depth_mm, config.max_depth_mm = result
-                                config.depth_range_changed = True
-                                config.request_save()
-                                message = f"Depth calibrated: {result[0]}-{result[1]} mm"
-                            else:
-                                ok, message = False, "No valid depth. Flatten the sand and clear hands away, then retry."
-                    elif action == "reset_terrain":
-                        if hasattr(source, "reset"):
-                            source.reset()
-                            message = "Terrain reset"
-                        else:
-                            ok, message = False, "Only the simulator terrain can be reset"
+                        message = f"Open {value.replace('-', '–')}"
                     else:
-                        ok, message = False, f"Unknown command: {action}"
+                        ok, message = False, "Opening must be before closing, as HH:MM-HH:MM"
+                elif action == "set_days":
+                    days = "".join(sorted(set(str(value or "")) & set("0123456")))
+                    if days:
+                        config.kiosk_days = days
+                        kiosk.configure(days=days)
+                        config.request_save()
+                        message = "Open days updated"
+                    else:
+                        ok, message = False, "Pick at least one day"
+                elif action == "wake":
+                    kiosk.wake()
+                    message = "Awake until the next opening or closing time"
+                elif action == "set_projector_host":
+                    host = str(value or "").strip()
+                    if host and not re.fullmatch(r"[A-Za-z0-9.\-:]{1,253}", host):
+                        ok, message = False, f"Not an IP address or host name: {host}"
+                    else:
+                        config.projector_host = host
+                        kiosk.set_projector_host(host, config.projector_password)
+                        config.request_save()
+                        message = f"Projector: {host}" if host else "Projector control off"
+                elif action == "projector_power":
+                    if value not in ("on", "off"):
+                        ok, message = False, f"Unknown projector power: {value}"
+                    elif not kiosk.set_projector(value == "on"):
+                        ok, message = False, "Add the projector's IP address first"
+                    else:
+                        message = f"Turning the projector {value}"
+                elif action == "toggle_auto_reconnect":
+                    config.sensor_auto_reconnect = not config.sensor_auto_reconnect
+                    config.request_save()
+                    message = f"Sensor auto-reconnect {'on' if config.sensor_auto_reconnect else 'off'}"
+                elif action == "calibrate_depth":
+                    if not hasattr(source, "auto_calibrate_flat_surface"):
+                        ok, message = False, f"{sensor_name} can't auto-calibrate depth"
+                    else:
+                        result = source.auto_calibrate_flat_surface()
+                        if result:
+                            config.min_depth_mm, config.max_depth_mm = result
+                            config.depth_range_changed = True
+                            config.request_save()
+                            message = f"Depth calibrated: {result[0]}-{result[1]} mm"
+                        else:
+                            ok, message = False, "No valid depth. Flatten the sand and clear hands away, then retry."
+                elif action == "cycle_theme":
+                    idx = SCHEMES.index(config.colour_scheme) if config.colour_scheme in SCHEMES else -1
+                    config.colour_scheme = SCHEMES[(idx + 1) % len(SCHEMES)]
+                    config.request_save()
+                    message = f"Theme: {config.colour_scheme}"
+                elif action == "nudge_sea_level":
+                    step = _as_float(value)
+                    if step is None:
+                        ok, message = False, "Sea level step must be a number"
+                    else:
+                        config.sea_level_offset = round(
+                            max(-0.2, min(0.2, config.sea_level_offset + step)), 3
+                        )
+                        config.request_save()
+                        message = f"Sea level {config.sea_level_offset * 100:+.0f}%"
+                elif action == "set_button_action":
+                    button = str(cmd.get("button") or "")
+                    if button_input.set_mapping(button, str(value)):
+                        config.button_map = dict(button_input.mapping)
+                        config.request_save()
+                        message = f"{button_label(button)}: {BUTTON_ACTIONS[str(value)][0]}"
+                    else:
+                        ok, message = False, f"Unknown button action: {value}"
+                elif action == "toggle_button_serial":
+                    config.buttons_serial = not config.buttons_serial
+                    button_input.configure_serial(config.buttons_serial, config.buttons_port)
+                    config.request_save()
+                    message = f"Arduino buttons {'on' if config.buttons_serial else 'off'}"
+                elif action == "reset_terrain":
+                    if hasattr(source, "reset"):
+                        source.reset()
+                        message = "Terrain reset"
+                    else:
+                        ok, message = False, "Only the simulator terrain can be reset"
+                else:
+                    ok, message = False, f"Unknown command: {action}"
 
+                if cmd.get("source") == "button":
+                    status_flash_text = cmd["label"] if ok else message
+                    status_flash_timer = 2.0
+                    if depth_server_enabled:
+                        depth_server.push_event({
+                            "type": "activity", "ok": ok,
+                            "text": f"{button_label(cmd['button'])}: {message or cmd['label']}",
+                        })
+                elif depth_server_enabled:
                     depth_server.push_event({
                         "type": "ack", "id": cmd.get("id"), "ok": ok, "message": message,
                     })
@@ -1438,7 +1492,11 @@ def main() -> int:
             depth_server.stop()
         except Exception:
             logger.exception("Failed to stop depth server during shutdown")
-        timelapse.stop()
+        try:
+            timelapse.stop()
+            button_input.close()
+        except Exception:
+            logger.exception("Failed to stop timelapse or buttons during shutdown")
         try:
             if hasattr(source, "close"):
                 source.close()

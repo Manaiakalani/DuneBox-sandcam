@@ -246,6 +246,17 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
       </div>
     </fieldset>
 
+    <fieldset class="group" id="buttons-controls" disabled>
+      <legend class="group-title">Physical buttons</legend>
+      <p class="row-hint">Press a button on a USB keypad or the Arduino and it appears here. Choose what it does.</p>
+      <ul class="button-map" id="button-map"></ul>
+      <div class="row">
+        <span class="row-label">Arduino buttons</span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_button_serial" aria-label="Arduino buttons"></button>
+      </div>
+      <p class="row-hint" id="serial-hint">For arcade buttons wired to an Arduino running hardware/buttons/buttons.ino.</p>
+    </fieldset>
+
     <fieldset class="group" id="terrain-controls" disabled>
       <legend class="group-title">Saved terrains</legend>
       <div class="button-row">

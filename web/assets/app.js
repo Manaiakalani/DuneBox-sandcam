@@ -105,6 +105,7 @@
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (msg.type === "state") handleState(msg);
       else if (msg.type === "ack") handleAck(msg);
+      else if (msg.type === "activity") logActivity(msg.text, msg.ok);
     };
     ws.onclose = async () => {
       setOffline();
@@ -131,7 +132,7 @@
   }
 
   function setEnabled(on) {
-    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls", "kiosk-controls", "terrain-controls"]) {
+    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls", "kiosk-controls", "buttons-controls", "terrain-controls"]) {
       $(id).disabled = !on;
     }
     if (!on) $("dunebox-controls").disabled = true;
@@ -308,6 +309,7 @@
     renderSetup(s);
     renderTerrains(s);
     renderKiosk(s);
+    renderButtons(s);
     renderDuneBox(s);
     renderPairing(s.dashboard);
     updateViewMeta();
@@ -720,6 +722,61 @@
           : `Projector ${POWER_LABELS[p.power] || p.power}.`;
   }
 
+  // ── Physical buttons ──────────────────────────────────────────────
+  function buttonName(id) {
+    if (id.startsWith("keypad ")) return `Keypad ${id.slice(7)}`;
+    return /^\d+$/.test(id) ? `Button ${id}` : id;
+  }
+
+  let renderedButtons = "";
+  const lastPressed = new Map();
+  function renderButtons(s) {
+    const b = s.buttons;
+    if (!b) return;
+    const key = JSON.stringify(b.buttons.map((x) => [x.id, x.action])) + Object.keys(b.actions).join();
+    if (key !== renderedButtons && !$("button-map").contains(document.activeElement)) {
+      renderedButtons = key;
+      $("button-map").replaceChildren(...b.buttons.map((btn) => {
+        const li = document.createElement("li");
+        li.dataset.button = btn.id;
+        const name = Object.assign(document.createElement("label"), {
+          className: "button-name", textContent: buttonName(btn.id), htmlFor: `btn-map-${btn.id}`,
+        });
+        const select = document.createElement("select");
+        select.className = "input select";
+        select.id = `btn-map-${btn.id}`;
+        for (const [value, label] of Object.entries(b.actions)) {
+          select.append(new Option(label, value, false, value === btn.action));
+        }
+        select.addEventListener("change", () => {
+          sendCommand({ action: "set_button_action", button: btn.id, value: select.value });
+        });
+        li.append(name, select);
+        return li;
+      }));
+    }
+    // Flash a row when its button is pressed so people can find which is which
+    for (const btn of b.buttons) {
+      const prev = lastPressed.get(btn.id);
+      lastPressed.set(btn.id, btn.pressed);
+      if (prev !== undefined && btn.pressed > prev) {
+        const li = $("button-map").querySelector(`li[data-button="${CSS.escape(btn.id)}"]`);
+        if (li) {
+          li.classList.remove("just-pressed");
+          void li.offsetWidth;
+          li.classList.add("just-pressed");
+        }
+      }
+    }
+    const serial = b.serial;
+    setSwitch('#buttons-controls [data-action="toggle_button_serial"]', serial.enabled);
+    $("serial-hint").textContent = !serial.enabled
+      ? "For arcade buttons wired to an Arduino running hardware/buttons/buttons.ino."
+      : serial.port
+        ? `Listening on ${serial.port}.`
+        : serial.error || "Looking for the Arduino…";
+  }
+
   const DUNEBOX_STATES = {
     running: "Running",
     setup: "Setup: not calibrated yet",
@@ -821,6 +878,7 @@
     const id = nextId++;
     const msg = { type: "command", id, action: cmd.action, target: cmd.target || "sandcam" };
     if (cmd.value !== undefined) msg.value = cmd.value;
+    if (cmd.button !== undefined) msg.button = cmd.button;
     ws.send(JSON.stringify(msg));
     if (el) el.setAttribute("aria-busy", "true");
     const timer = setTimeout(() => {

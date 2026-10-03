@@ -97,11 +97,14 @@ class LoopbackServerTests(unittest.TestCase):
 
         async def run() -> dict:
             async with connect(f"ws://127.0.0.1:{self.port}/ws") as ws:
-                await ws.send(json.dumps({"type": "command", "id": 7, "action": "toggle_sound"}))
+                await ws.send(json.dumps({
+                    "type": "command", "id": 7, "action": "toggle_sound", "source": "button",
+                }))
                 for _ in range(50):
                     cmds = self.server.poll_commands()
                     if cmds:
                         self.assertEqual(cmds[0]["action"], "toggle_sound")
+                        self.assertNotIn("source", cmds[0])
                         self.server.push_event({"type": "ack", "id": 7, "ok": True, "message": "ok"})
                         break
                     await asyncio.sleep(0.02)

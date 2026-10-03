@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import pygame
 
+from buttons import clean_map
 from kiosk import parse_hours
 
 # ── palette (DESIGN.md tokens, shared with the web dashboard) ────────────────
@@ -146,6 +147,9 @@ class Config:
     kiosk_days: str = "01234"         # Mon=0 … Sun=6
     projector_host: str = ""          # PJLink projector IP; empty = no power control
     projector_password: str = ""
+    button_map: dict | None = None    # button id -> buttons.BUTTON_ACTIONS key
+    buttons_serial: bool = False      # Arduino buttons over USB serial
+    buttons_port: str = ""            # serial port; empty = find the Arduino
     ai_enabled: bool = False
     guide_enabled: bool = True
     guide_challenges_enabled: bool = True
@@ -275,6 +279,9 @@ class Config:
         config.kiosk_days = "".join(sorted(set(str(config.kiosk_days)) & set("0123456")))
         config.projector_host = str(config.projector_host or "").strip()
         config.projector_password = str(config.projector_password or "")
+        config.button_map = clean_map(config.button_map)
+        config.buttons_serial = bool(config.buttons_serial)
+        config.buttons_port = str(config.buttons_port or "").strip()
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
@@ -325,6 +332,9 @@ class Config:
             "kiosk_days": self.kiosk_days,
             "projector_host": self.projector_host,
             "projector_password": self.projector_password,
+            "button_map": self.button_map,
+            "buttons_serial": self.buttons_serial,
+            "buttons_port": self.buttons_port,
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
             "depth_server_enabled": self.depth_server_enabled,
