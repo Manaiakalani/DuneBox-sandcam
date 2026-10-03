@@ -196,6 +196,15 @@ code { font-family: var(--mono); font-size: 0.92em; color: var(--text); }
   overflow: hidden;
 }
 #depth { display: block; width: 100%; height: 100%; object-fit: contain; image-rendering: auto; }
+#depth3d { display: block; width: 100%; height: 100%; cursor: grab; }
+#depth3d:active { cursor: grabbing; }
+#depth3d:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#depth[hidden], #depth3d[hidden] { display: none; }
+.view-head { align-items: center; flex-wrap: wrap; row-gap: 6px; }
+.view-head h2 { white-space: nowrap; }
+.view-head .view-meta { margin-left: auto; }
+.segmented.segmented-sm { display: inline-grid; grid-template-columns: auto auto; width: auto; }
+.segmented.segmented-sm button { min-height: 32px; min-width: 44px; padding: 0 10px; }
 .view-empty {
   position: absolute;
   inset: 0;

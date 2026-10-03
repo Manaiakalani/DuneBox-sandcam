@@ -74,9 +74,14 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
     <div class="view-head">
       <h2 id="view-title">Live sand</h2>
       <span class="view-meta" id="view-meta">Waiting for frames</span>
+      <div class="segmented segmented-sm" role="radiogroup" aria-label="View" id="view-mode">
+        <button type="button" role="radio" aria-checked="true" data-view="2d">2D</button>
+        <button type="button" role="radio" aria-checked="false" data-view="3d" tabindex="-1">3D</button>
+      </div>
     </div>
     <div class="view-frame">
       <canvas id="depth" width="640" height="480" role="img" aria-label="Live elevation map of the sand"></canvas>
+      <canvas id="depth3d" hidden tabindex="0" aria-label="3D view of the sand. Drag or use arrow keys to orbit, scroll or pinch to zoom."></canvas>
       <div class="view-empty" id="view-empty">
         <p>The live view appears here once the sandbox is connected.</p>
       </div>
@@ -288,6 +293,7 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
 <ol class="toasts" id="toasts" aria-live="polite" aria-label="Notifications"></ol>
 
 <script src="/assets/voice.js" defer></script>
+<script src="/assets/view3d.js" defer></script>
 <script src="/assets/app.js" defer></script>
 </body>
 </html>

@@ -198,9 +198,17 @@
       }
       sctx.drawImage(bitmap, 0, 0);
       bitmap.close();
-      const img = sctx.getImageData(0, 0, w, h);
-      colorize(img, w, h);
-      ctx.putImageData(img, 0, 0);
+      if (viewMode === "3d" && view3d) {
+        syncLut();
+        view3d.update(scratch, w, h, {
+          contour: state && state.contours ? state.contour_interval || CONTOUR_INTERVAL : 0,
+          sea: WATER_LEVEL,
+        });
+      } else {
+        const img = sctx.getImageData(0, 0, w, h);
+        colorize(img, w, h);
+        ctx.putImageData(img, 0, 0);
+      }
       $("view-empty").hidden = true;
 
       frameCount++;
@@ -217,6 +225,43 @@
       decoding = false;
     }
   }
+
+  // ── 2D / 3D view ──────────────────────────────────────────────────
+  let viewMode = "2d";
+  let view3d = null;
+  let lutIn3d = "";
+
+  function syncLut() {
+    const theme = state && state.theme;
+    if (!view3d || !theme || !luts[theme] || lutIn3d === theme) return;
+    lutIn3d = theme;
+    view3d.setLut(new Uint8Array(luts[theme].buffer.slice(0)));
+  }
+
+  function setViewMode(mode) {
+    if (mode === "3d" && !view3d) {
+      try { view3d = window.DuneView3D && window.DuneView3D.create($("depth3d")); } catch { view3d = null; }
+      if (!view3d) {
+        toast("3D needs WebGL 2, which this browser doesn't support.", "err");
+        mode = "2d";
+      }
+    }
+    viewMode = mode;
+    localStorage.setItem("dunebox.view", mode);
+    $("depth").hidden = mode === "3d";
+    $("depth3d").hidden = mode !== "3d";
+    for (const b of $("view-mode").children) {
+      const on = b.dataset.view === mode;
+      b.setAttribute("aria-checked", String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    if (mode === "3d") { lutIn3d = ""; syncLut(); view3d.draw(); }
+  }
+  $("view-mode").addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-view]");
+    if (b) setViewMode(b.dataset.view);
+  });
+  window.addEventListener("resize", () => view3d && viewMode === "3d" && view3d.draw());
 
   function colorize(img, w, h) {
     const lut = state && luts[state.theme];
@@ -646,7 +691,8 @@
     const i = items.indexOf(document.activeElement);
     const next = items[(i + (ev.key === "ArrowLeft" || ev.key === "ArrowUp" ? -1 : 1) + items.length) % items.length];
     next.focus();
-    send(next);
+    if (next.dataset.action) send(next);
+    else next.click();
   });
 
   // ── Keyboard shortcuts (same keys as sandcam) ────────────────────
@@ -742,5 +788,6 @@
     setTimeout(() => li.remove(), tone === "err" ? 7000 : 3500);
   }
 
+  if (localStorage.getItem("dunebox.view") === "3d") setViewMode("3d");
   start();
 })();
