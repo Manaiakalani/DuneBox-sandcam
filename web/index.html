@@ -41,6 +41,10 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
     </span>
   </div>
 
+  <button class="btn btn-ghost voice-btn" id="voice-btn" type="button" aria-pressed="false">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <span class="voice-label">Voice</span>
+  </button>
   <button class="btn btn-secondary" id="pair-btn" type="button" popovertarget="pair-popover">
     Open on a tablet
   </button>
@@ -283,6 +287,7 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
 
 <ol class="toasts" id="toasts" aria-live="polite" aria-label="Notifications"></ol>
 
+<script src="/assets/voice.js" defer></script>
 <script src="/assets/app.js" defer></script>
 </body>
 </html>

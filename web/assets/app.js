@@ -575,17 +575,24 @@
 
   // ── Commands ──────────────────────────────────────────────────────
   function send(el) {
+    if (el.getAttribute("aria-busy") === "true") return;
+    const cmd = { action: el.dataset.action, target: el.dataset.target };
+    if (el.dataset.value) cmd.value = el.dataset.value;
+    else if (el.matches("input.range")) cmd.value = Number(el.value);
+    sendCommand(cmd, el);
+  }
+
+  // el is the control that triggered the command (null for voice)
+  function sendCommand(cmd, el = null) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       toast("Not connected to the sandbox.", "err");
       return;
     }
-    if (el.getAttribute("aria-busy") === "true") return;
     const id = nextId++;
-    const msg = { type: "command", id, action: el.dataset.action, target: el.dataset.target || "sandcam" };
-    if (el.dataset.value) msg.value = el.dataset.value;
-    else if (el.matches("input.range")) msg.value = Number(el.value);
+    const msg = { type: "command", id, action: cmd.action, target: cmd.target || "sandcam" };
+    if (cmd.value !== undefined) msg.value = cmd.value;
     ws.send(JSON.stringify(msg));
-    el.setAttribute("aria-busy", "true");
+    if (el) el.setAttribute("aria-busy", "true");
     const timer = setTimeout(() => {
       finishPending(id, pending.get(id));
       toast("No response from the sandbox. Check that sandcam is still running.", "err");
@@ -596,7 +603,7 @@
   function finishPending(id, p) {
     if (!p) return;
     clearTimeout(p.timer);
-    p.el.removeAttribute("aria-busy");
+    if (p.el) p.el.removeAttribute("aria-busy");
     pending.delete(id);
   }
 
@@ -604,9 +611,9 @@
     const p = pending.get(msg.id);
     if (!p) return;
     finishPending(msg.id, p);
-    const role = p.el.getAttribute("role");
+    const role = p.el ? p.el.getAttribute("role") : null;
     const activityShown = getComputedStyle($("activity")).display !== "none";
-    const quiet = msg.ok && (activityShown || role === "switch" || role === "radio" || p.el.closest(".stepper"));
+    const quiet = msg.ok && p.el && (activityShown || role === "switch" || role === "radio" || p.el.closest(".stepper"));
     if (!quiet && msg.message) toast(msg.message, msg.ok ? "ok" : "err");
     if (msg.message) logActivity(msg.message, msg.ok);
   }
@@ -661,6 +668,67 @@
       send(el);
     }
   });
+
+  // ── Voice ─────────────────────────────────────────────────────────
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const voiceBtn = $("voice-btn");
+  let recognizer = null;
+  let listening = false;
+
+  function voiceUnavailableReason() {
+    if (!Recognition) return "Voice needs Chrome or Edge.";
+    if (!window.isSecureContext) return "Voice only works on the sandbox PC (http://127.0.0.1) or over HTTPS.";
+    return "";
+  }
+
+  function setListening(on) {
+    listening = on;
+    voiceBtn.setAttribute("aria-pressed", String(on));
+    voiceBtn.querySelector(".voice-label").textContent = on ? "Listening…" : "Voice";
+  }
+
+  function onPhrase(text) {
+    const cmd = window.DuneVoice.parse(text, state);
+    if (!cmd) {
+      toast(`Heard “${text}”, but it isn't a command. Try “erupt the volcano” or “heat map”.`, "err");
+      logActivity(`Voice: “${text}” (not a command)`, false);
+      return;
+    }
+    if (cmd.already) {
+      toast(cmd.already);
+      return;
+    }
+    logActivity(`Voice: “${text}”`, true);
+    sendCommand(cmd);
+  }
+
+  voiceBtn.addEventListener("click", () => {
+    const reason = voiceUnavailableReason();
+    if (reason) { toast(reason, "err"); return; }
+    if (listening) { setListening(false); recognizer && recognizer.stop(); return; }
+    recognizer = new Recognition();
+    recognizer.lang = document.documentElement.lang || "en";
+    recognizer.continuous = true;
+    recognizer.interimResults = false;
+    recognizer.onresult = (ev) => {
+      const result = ev.results[ev.results.length - 1];
+      if (result.isFinal) onPhrase(result[0].transcript.trim());
+    };
+    recognizer.onerror = (ev) => {
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        toast("Microphone blocked. Allow it in the browser's site settings.", "err");
+        setListening(false);
+      }
+    };
+    // Browsers stop after a pause; keep listening until the user turns it off.
+    recognizer.onend = () => { if (listening) { try { recognizer.start(); } catch { setListening(false); } } };
+    setListening(true);
+    recognizer.start();
+  });
+  if (voiceUnavailableReason()) {
+    voiceBtn.setAttribute("aria-disabled", "true");
+    voiceBtn.title = voiceUnavailableReason();
+  }
 
   // ── Toasts ────────────────────────────────────────────────────────
   function toast(text, tone = "ok") {
