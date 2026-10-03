@@ -87,6 +87,14 @@ class DepthSensor(ABC):
             return np.full((h, w), 0.5, dtype=np.float32)
         return frame
 
+    def get_aligned_color_frame(self) -> np.ndarray | None:
+        """Colour in the depth camera's geometry, for the DuneBox depth relay.
+
+        Backends that can register colour to depth override this; the default
+        is the plain colour frame, which only lines up approximately.
+        """
+        return self.get_color_frame()
+
     def sculpt(self, cx: int, cy: int, radius: int, delta: float) -> None:
         """Brush-paint the depth map.  No-op for hardware sources."""
 
@@ -1160,6 +1168,13 @@ class OrbbecSensor(DepthSensor):
         ).reshape(color_frame.get_height(), color_frame.get_width(), -1)
         return color[:, :, :3].copy()
 
+    def get_aligned_color_frame(self) -> np.ndarray | None:
+        if self._connected and self._use_pyk4a:
+            transformed = self._k4a.get_capture().transformed_color
+            # BGRA in the depth camera's geometry -> RGB
+            return None if transformed is None else transformed[:, :, 2::-1].copy()
+        return self.get_color_frame()
+
     def is_connected(self) -> bool:
         return self._connected
 
@@ -1227,6 +1242,7 @@ class RealSenseSensor(DepthSensor):
         self._pipeline = None
         self._profile = None
         self._depth_scale = 1.0  # mm per depth unit
+        self._align = None  # rs.align to the depth stream, created on first use
         self._device_name = "RealSense"
 
     @staticmethod
@@ -1358,6 +1374,18 @@ class RealSenseSensor(DepthSensor):
             return None
 
         return np.asanyarray(color_frame.get_data()).copy()
+
+    def get_aligned_color_frame(self) -> np.ndarray | None:
+        if not self._connected or self._pipeline is None:
+            return None
+        if self._align is None:
+            self._align = self._rs.align(self._rs.stream.depth)
+        frames = self._align.process(self._pipeline.wait_for_frames(timeout_ms=1000))
+        color_frame = frames.get_color_frame()
+        if not color_frame:
+            return None
+        # bgr8 stream -> RGB
+        return np.asanyarray(color_frame.get_data())[:, :, ::-1].copy()
 
     def is_connected(self) -> bool:
         return self._connected

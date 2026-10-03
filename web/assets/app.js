@@ -132,7 +132,7 @@
   }
 
   function setEnabled(on) {
-    for (const id of ["sandcam-controls", "events-controls", "games-controls", "classroom-controls", "system-controls", "kiosk-controls", "buttons-controls", "terrain-controls"]) {
+    for (const id of ["sandcam-controls", "events-controls", "games-controls", "classroom-controls", "system-controls", "kiosk-controls", "buttons-controls", "terrain-controls", "relay-controls"]) {
       $(id).disabled = !on;
     }
     if (!on) $("dunebox-controls").disabled = true;
@@ -312,6 +312,7 @@
     renderKiosk(s);
     renderButtons(s);
     renderDuneBox(s);
+    renderRelay(s);
     renderPairing(s.dashboard);
     updateViewMeta();
   }
@@ -915,6 +916,20 @@
       : serial.port
         ? `Listening on ${serial.port}.`
         : serial.error || "Looking for the Arduino…";
+  }
+
+  function renderRelay(s) {
+    const r = s.relay;
+    $("relay-controls").hidden = !r;
+    if (!r) return;
+    setSwitch('[data-action="toggle_depth_relay"]', r.enabled);
+    $("relay-hint").textContent = r.error
+      ? r.error
+      : !r.enabled
+        ? "Lets DuneBox use the sensor sandcam is running, such as an Orbbec Femto or RealSense."
+        : r.clients
+          ? "DuneBox is receiving depth from this sensor."
+          : `Waiting for DuneBox on port ${r.port}. In DuneBox, set kinectVersion to 4 in settings/kinectProjectorSettings.xml.`;
   }
 
   const DUNEBOX_STATES = {

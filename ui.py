@@ -152,6 +152,7 @@ class Config:
     buttons_serial: bool = False      # Arduino buttons over USB serial
     buttons_port: str = ""            # serial port; empty = find the Arduino
     language: str = "en"              # lessons and messages on the sand
+    depth_relay_enabled: bool = False # stream depth to DuneBox (kinectVersion=4)
     ai_enabled: bool = False
     guide_enabled: bool = True
     guide_challenges_enabled: bool = True
@@ -286,6 +287,7 @@ class Config:
         config.buttons_port = str(config.buttons_port or "").strip()
         if config.language not in LANGUAGES:
             config.language = "en"
+        config.depth_relay_enabled = bool(config.depth_relay_enabled)
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
@@ -340,6 +342,7 @@ class Config:
             "buttons_serial": self.buttons_serial,
             "buttons_port": self.buttons_port,
             "language": self.language,
+            "depth_relay_enabled": self.depth_relay_enabled,
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
             "depth_server_enabled": self.depth_server_enabled,

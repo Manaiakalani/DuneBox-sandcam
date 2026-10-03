@@ -58,6 +58,7 @@ from classroom import (
 from creatures import MARKER_DINO_SPAWN, MARKER_EXTINCTION, CreatureManager
 from day_night import DayNightCycle
 from dem_loader import export_snapshot, list_snapshots, load_snapshot
+from depth_relay import DepthRelay
 from depth_server import DepthStreamServer
 from diagnostics import show_startup_diagnostics
 from earthquake import EarthquakeDetector
@@ -458,6 +459,9 @@ def main() -> int:
     depth_server_enabled = config.depth_server_enabled
     if depth_server_enabled:
         depth_server.start()
+    depth_relay = DepthRelay()
+    if config.depth_relay_enabled:
+        depth_relay.start()
     # Latest state reported by DuneBox (C++) over the bridge, for the dashboard.
     dunebox_state: dict | None = None
     dunebox_state_time = 0.0
@@ -841,6 +845,18 @@ def main() -> int:
             surface_health.update(
                 time.monotonic(), frame, config.max_depth_mm - config.min_depth_mm
             )
+            if depth_relay.client_count:
+                relay_color = None
+                if depth_relay.wants_color:
+                    try:
+                        relay_color = source.get_aligned_color_frame()
+                    except Exception:
+                        logger.debug("No colour for the depth relay", exc_info=True)
+                depth_relay.publish(
+                    frame, config.min_depth_mm, config.max_depth_mm,
+                    "simulated" if _is_simulated(source) else config.sensor_type,
+                    relay_color,
+                )
             if frame is not None and config.sea_level_offset:
                 # Raising the sea is the same as lowering every height, so
                 # water, creatures, games and the dashboard all stay in step.
@@ -1107,6 +1123,7 @@ def main() -> int:
                         "languages": LANGUAGES,
                     },
                     "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
+                    "relay": depth_relay.status(),
                     "dunebox": dunebox_state,
                     "dashboard": {
                         "url": depth_server.dashboard_url(),
@@ -1356,6 +1373,17 @@ def main() -> int:
                     button_input.configure_serial(config.buttons_serial, config.buttons_port)
                     config.request_save()
                     message = f"Arduino buttons {'on' if config.buttons_serial else 'off'}"
+                elif action == "toggle_depth_relay":
+                    if depth_relay.running:
+                        depth_relay.stop()
+                        config.depth_relay_enabled = False
+                        message = "Stopped sharing the sensor"
+                    elif depth_relay.start():
+                        config.depth_relay_enabled = True
+                        message = "Sharing the sensor with DuneBox"
+                    else:
+                        ok, message = False, depth_relay.error
+                    config.request_save()
                 elif action == "start_lesson":
                     settings = lessons.start(str(value))
                     if settings is None:
@@ -1616,8 +1644,9 @@ def main() -> int:
         try:
             timelapse.stop()
             button_input.close()
+            depth_relay.stop()
         except Exception:
-            logger.exception("Failed to stop timelapse or buttons during shutdown")
+            logger.exception("Failed to stop timelapse, buttons or depth relay during shutdown")
         try:
             if hasattr(source, "close"):
                 source.close()

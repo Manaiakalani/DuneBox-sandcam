@@ -232,6 +232,15 @@
       "Los lagos se secan poco a poco para que la arena no se inunde en sesiones largas.",
     "Rain from hands": "Lluvia con las manos",
     "Show erosion": "Mostrar erosión",
+    "Sensor": "Sensor",
+    "Share this sensor with DuneBox": "Compartir este sensor con DuneBox",
+    "Lets DuneBox use the sensor sandcam is running, such as an Orbbec Femto or RealSense.":
+      "Permite que DuneBox use el sensor de sandcam, como un Orbbec Femto o un RealSense.",
+    "DuneBox is receiving depth from this sensor.": "DuneBox está recibiendo la profundidad de este sensor.",
+    "Waiting for DuneBox on port 9877. In DuneBox, set kinectVersion to 4 in settings/kinectProjectorSettings.xml.":
+      "Esperando a DuneBox en el puerto 9877. En DuneBox, pon kinectVersion a 4 en settings/kinectProjectorSettings.xml.",
+    "Sharing the sensor with DuneBox": "Compartiendo el sensor con DuneBox",
+    "Stopped sharing the sensor": "Ya no se comparte el sensor",
     "Fast water scars the sand dark and drops pale sediment where it slows. Marks fade, and reshaping the sand clears them.":
       "El agua rápida marca la arena de oscuro y deja sedimento claro donde se frena. Las marcas se desvanecen y se borran al mover la arena.",
     "Drain all water": "Vaciar toda el agua",
