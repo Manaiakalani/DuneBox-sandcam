@@ -131,7 +131,7 @@
   }
 
   function setEnabled(on) {
-    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls"]) {
+    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls", "terrain-controls"]) {
       $(id).disabled = !on;
     }
     if (!on) $("dunebox-controls").disabled = true;
@@ -261,6 +261,7 @@
     renderWorld(s);
     renderGames(s);
     renderSetup(s);
+    renderTerrains(s);
     renderDuneBox(s);
     renderPairing(s.dashboard);
     updateViewMeta();
@@ -387,6 +388,61 @@
         : "No volcanoes yet. Erupting places one at the centre.";
   }
 
+  function smallButton(text, action, value, label) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn btn-secondary btn-sm";
+    b.dataset.action = action;
+    b.dataset.value = value;
+    b.textContent = text;
+    if (label) b.setAttribute("aria-label", label);
+    return b;
+  }
+
+  // "terrain_20261003_140512" -> "Oct 3, 2:05 PM"
+  function snapshotLabel(name, time) {
+    const d = time ? new Date(time * 1000) : null;
+    return d && !isNaN(d) ? d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : name;
+  }
+
+  let renderedSnapshots = "";
+  function renderTerrains(s) {
+    const list = s.snapshots || [];
+    const key = JSON.stringify(list) + "|" + s.can_load_terrain;
+    if (key !== renderedSnapshots) {
+      renderedSnapshots = key;
+      $("snapshot-list").replaceChildren(...list.map((snap) => {
+        const li = document.createElement("li");
+        const label = document.createElement("span");
+        label.className = "snapshot-name";
+        label.textContent = snapshotLabel(snap.name, snap.time);
+        label.title = snap.name;
+        const files = document.createElement("span");
+        files.className = "snapshot-files";
+        for (const ext of snap.files) {
+          const a = document.createElement("a");
+          a.href = `${httpBase}/snapshots/${snap.name}${ext}${pin ? `?pin=${encodeURIComponent(pin)}` : ""}`;
+          a.textContent = ext.slice(1);
+          a.setAttribute("download", "");
+          a.setAttribute("aria-label", `Download ${ext.slice(1).toUpperCase()} for ${label.textContent}`);
+          files.append(a);
+        }
+        const end = document.createElement("span");
+        end.className = "row-end";
+        end.append(files);
+        if (s.can_load_terrain) end.append(smallButton("Load", "load_snapshot", snap.name, `Load ${label.textContent} into the simulator`));
+        end.append(smallButton("Rebuild", "start_challenge", snap.name, `Rebuild ${label.textContent} as a challenge`));
+        li.append(label, end);
+        return li;
+      }));
+    }
+    const tl = s.timelapse || {};
+    setSwitch('#terrain-controls [data-action="toggle_timelapse"]', tl.active);
+    $("timelapse-hint").textContent = tl.active
+      ? `Recording: ${tl.frames} ${tl.frames === 1 ? "frame" : "frames"}, one every ${Math.round(tl.interval)}s, in assets/timelapse/${tl.folder}.`
+      : `Saves a frame every ${Math.round(tl.interval || 10)}s to assets/timelapse on the sandbox PC.`;
+  }
+
   let renderedGames = "";
   function renderGames(s) {
     const games = s.games || {};
@@ -403,14 +459,24 @@
           k.textContent = String(i + 1);
           label.append(k);
         }
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "btn btn-secondary btn-sm";
-        b.dataset.action = "start_game";
-        b.dataset.value = id;
+        if (id === "challenge" && s.challenge_targets) {
+          // One button per target landscape instead of a single Start
+          li.className = "game-challenge";
+          label.append(Object.assign(document.createElement("span"), {
+            className: "row-value", textContent: "pick a landscape to rebuild",
+          }));
+          const group = document.createElement("div");
+          group.className = "target-row";
+          Object.entries(s.challenge_targets).forEach(([target, targetName], j) => {
+            const b = smallButton(targetName, "start_challenge", target, `Start ${name}: ${targetName}`);
+            if (j === 0) b.dataset.gameIndex = String(i + 1);
+            group.append(b);
+          });
+          li.append(label, group);
+          return li;
+        }
+        const b = smallButton("Start", "start_game", id, `Start ${name}`);
         b.dataset.gameIndex = String(i + 1);
-        b.textContent = "Start";
-        b.setAttribute("aria-label", `Start ${name}`);
         li.append(label, b);
         return li;
       }));

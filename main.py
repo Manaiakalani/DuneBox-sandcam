@@ -16,7 +16,8 @@ N           toggle day/night cycle
 E           toggle ecosystem simulation
 +/-         speed up / slow down day/night cycle
 P           pause / resume day/night cycle
-F5          save current terrain snapshot
+F5          save current terrain snapshot (.npy, ESRI .asc DEM, .png)
+T           start / stop timelapse frames (assets/timelapse/)
 R           reset terrain (simulator only)
 B           toggle DuneBox bridge (TCP link to C++ app)
 U           toggle the web dashboard (http://127.0.0.1:8765/ by default)
@@ -41,18 +42,19 @@ from ai_guide import (
 from bridge import AppBridge
 from creatures import MARKER_DINO_SPAWN, MARKER_EXTINCTION, CreatureManager
 from day_night import DayNightCycle
-from dem_loader import save_terrain_snapshot
+from dem_loader import export_snapshot, list_snapshots, load_snapshot
 from depth_server import DepthStreamServer
 from diagnostics import show_startup_diagnostics
 from earthquake import EarthquakeDetector
 from ecosystem import EcosystemManager
-from game_modes import GameManager
+from game_modes import BUILTIN_TARGETS, GameManager
 from interaction_engine import InteractionEngine
 from renderer import WATER_LEVEL, Renderer
 
 # from depth_source import MouseSimulator
 from sensor_api import create_sensor
 from sounds import SoundManager
+from timelapse import TimelapseRecorder
 from ui import (
     SCHEMES,
     SMOOTHING_LABELS,
@@ -102,6 +104,14 @@ def _as_float(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return num if np.isfinite(num) else None
+
+
+def _toggle_timelapse(timelapse: TimelapseRecorder) -> str:
+    if timelapse.active:
+        folder, frames = timelapse.stop()
+        return f"Timelapse stopped: {frames} frames in {folder.name if folder else '?'}"
+    folder = timelapse.start()
+    return f"Timelapse recording every {timelapse.interval:.0f}s to {folder.name}"
 
 
 def _draw_startup_screen(
@@ -424,6 +434,10 @@ def main() -> int:
     earthquake_det = EarthquakeDetector(render_w, render_h)
     eco_mgr = EcosystemManager(render_w, render_h)
     eco_enabled = False
+    timelapse = TimelapseRecorder(interval=config.timelapse_interval_s)
+    snapshots: list[dict] = []
+    snapshots_dirty = True
+    snapshots_checked = 0.0
     app_start_time = time.monotonic()
     debug_font = pygame.font.SysFont(None, 18)
     hud_font = pygame.font.SysFont(None, 22)
@@ -486,11 +500,19 @@ def main() -> int:
                         config.request_save()
                     elif event.key == pygame.K_F5:
                         try:
-                            saved = save_terrain_snapshot(source.get_frame())
-                            status_flash_text = f"Saved: {saved.name}"
-                        except Exception as exc:
+                            saved = export_snapshot(
+                                source.get_frame(),
+                                depth_range_mm=(config.min_depth_mm, config.max_depth_mm),
+                                image=scene,
+                            )
+                            snapshots_dirty = True
+                            status_flash_text = f"Saved: {saved[0].stem} (.npy .asc .png)"
+                        except (OSError, ValueError, pygame.error) as exc:
                             status_flash_text = f"Save failed: {exc}"
                         status_flash_timer = 2.5
+                    elif event.key == pygame.K_t:
+                        status_flash_text = _toggle_timelapse(timelapse)
+                        status_flash_timer = 3.0
                     elif event.key == pygame.K_b:
                         bridge_enabled = not bridge_enabled
                         if bridge_enabled:
@@ -891,6 +913,13 @@ def main() -> int:
 
             # ── depth server: push frame + state to WebSocket clients ─────
             if depth_server_enabled:
+                if snapshots_dirty or time.monotonic() - snapshots_checked > 10.0:
+                    snapshots = [
+                        {"name": s["name"], "files": s["files"], "time": round(s["time"])}
+                        for s in list_snapshots(8)
+                    ]
+                    snapshots_dirty = False
+                    snapshots_checked = time.monotonic()
                 depth_server.push_frame(frame)
                 creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
                 sensor_name = source.get_sensor_name()
@@ -933,6 +962,15 @@ def main() -> int:
                     },
                     "game": game_mgr.get_status(),
                     "games": GameManager.get_mode_names(),
+                    "challenge_targets": BUILTIN_TARGETS,
+                    "snapshots": snapshots,
+                    "can_load_terrain": hasattr(source, "load_terrain"),
+                    "timelapse": {
+                        "active": timelapse.active,
+                        "frames": timelapse.frames,
+                        "interval": timelapse.interval,
+                        "folder": timelapse.folder.name if timelapse.folder else "",
+                    },
                     "sensor": {
                         "name": sensor_name,
                         "configured": config.sensor_type,
@@ -1052,9 +1090,50 @@ def main() -> int:
                             ok, message = False, "No game is running"
                     elif action == "save_snapshot":
                         try:
-                            message = f"Saved {save_terrain_snapshot(source.get_frame()).name}"
-                        except (OSError, ValueError) as exc:
+                            saved = export_snapshot(
+                                source.get_frame(),
+                                depth_range_mm=(config.min_depth_mm, config.max_depth_mm),
+                                image=scene,
+                            )
+                            snapshots_dirty = True
+                            message = f"Saved {saved[0].stem} (terrain, DEM and image)"
+                        except (OSError, ValueError, pygame.error) as exc:
                             ok, message = False, f"Couldn't save snapshot: {exc}"
+                    elif action == "load_snapshot":
+                        try:
+                            data = load_snapshot(str(value))
+                        except (OSError, ValueError) as exc:
+                            ok, message = False, f"Couldn't load terrain: {exc}"
+                        else:
+                            if hasattr(source, "load_terrain"):
+                                source.load_terrain(data)
+                                message = f"Loaded {value} into the simulator"
+                            else:
+                                game_mgr.start_game(
+                                    "challenge", source.get_frame(),
+                                    target=data, target_name=f"Saved {str(value)[8:]}",
+                                )
+                                message = f"Rebuild {value}: dig red areas, fill blue ones"
+                    elif action == "start_challenge":
+                        if value in BUILTIN_TARGETS:
+                            game_mgr.start_game("challenge", source.get_frame(), target=value)
+                            message = f"Terrain challenge: {BUILTIN_TARGETS[value]}"
+                        else:
+                            try:
+                                data = load_snapshot(str(value))
+                            except (OSError, ValueError) as exc:
+                                ok, message = False, f"Couldn't load terrain: {exc}"
+                            else:
+                                game_mgr.start_game(
+                                    "challenge", source.get_frame(),
+                                    target=data, target_name=f"Saved {str(value)[8:]}",
+                                )
+                                message = f"Terrain challenge: rebuild {value}"
+                    elif action == "toggle_timelapse":
+                        try:
+                            message = _toggle_timelapse(timelapse)
+                        except OSError as exc:
+                            ok, message = False, f"Couldn't start timelapse: {exc}"
                     elif action == "calibrate_depth":
                         if not hasattr(source, "auto_calibrate_flat_surface"):
                             ok, message = False, f"{sensor_name} can't auto-calibrate depth"
@@ -1114,6 +1193,8 @@ def main() -> int:
             eq_shake_dx, eq_shake_dy = earthquake_det.get_shake_offset()
             shake_dx = v_shake_dx + eq_shake_dx
             shake_dy = v_shake_dy + eq_shake_dy
+
+            timelapse.update(time.monotonic(), scene)
 
             if scene.get_size() == screen.get_size():
                 screen.blit(scene, (shake_dx, shake_dy))
@@ -1236,6 +1317,7 @@ def main() -> int:
             depth_server.stop()
         except Exception:
             logger.exception("Failed to stop depth server during shutdown")
+        timelapse.stop()
         try:
             if hasattr(source, "close"):
                 source.close()

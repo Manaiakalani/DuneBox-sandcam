@@ -128,6 +128,7 @@ class Config:
     contour_interval: float = 0.05
     contour_labels: bool = False
     sea_level_offset: float = 0.0
+    timelapse_interval_s: float = 10.0
     show_creatures: bool = True
     shark_count: int = 4
     dinosaur_count: int = 5
@@ -258,6 +259,7 @@ class Config:
         config.contour_interval = max(0.02, min(0.12, float(config.contour_interval)))
         config.contour_labels = bool(config.contour_labels)
         config.sea_level_offset = max(-0.2, min(0.2, float(config.sea_level_offset)))
+        config.timelapse_interval_s = max(1.0, min(600.0, float(config.timelapse_interval_s)))
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
@@ -277,6 +279,7 @@ class Config:
             "contour_interval": self.contour_interval,
             "contour_labels": self.contour_labels,
             "sea_level_offset": self.sea_level_offset,
+            "timelapse_interval_s": self.timelapse_interval_s,
             "show_creatures": self.show_creatures,
             "shark_count": self.shark_count,
             "dinosaur_count": self.dinosaur_count,

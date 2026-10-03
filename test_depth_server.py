@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pathlib
 import socket
+import tempfile
 import time
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
+import numpy as np
+
+import dem_loader
 from depth_server import DepthStreamServer, is_loopback
 
 
@@ -63,6 +69,23 @@ class LoopbackServerTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             self._get("/assets/../../main.py")
         self.assertEqual(ctx.exception.code, 404)
+
+    def test_snapshot_download_and_bad_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            dem_loader, "SAVED_DIR", pathlib.Path(tmp)
+        ):
+            paths = dem_loader.export_snapshot(
+                np.full((6, 8), 0.5, dtype=np.float32), depth_range_mm=(500, 1100)
+            )
+            asc = next(p for p in paths if p.suffix == ".asc")
+            status, ctype, body = self._get(f"/snapshots/{asc.name}")
+            self.assertEqual(status, 200)
+            self.assertIn("text/plain", ctype)
+            self.assertTrue(body.startswith(b"ncols 8\nnrows 6\n"))
+            for bad in ("/snapshots/..%2Fmain.py", "/snapshots/terrain_x.npy", f"/snapshots/{asc.stem}.py"):
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    self._get(bad)
+                self.assertEqual(ctx.exception.code, 404)
 
     def test_no_pin_on_loopback(self) -> None:
         self.assertEqual(self.server.pin, "")

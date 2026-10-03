@@ -8,6 +8,7 @@ Includes a lightweight CPU-based water-flow simulation for game logic.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 import pygame
@@ -669,6 +670,144 @@ class BiomeSculpt(GameMode):
         super()._finish()
 
 
+# ── 5. Terrain Challenge ───────────────────────────────────────────────────────
+
+
+def builtin_target(name: str, shape: tuple[int, int]) -> np.ndarray:
+    """Procedural landscapes to rebuild when no saved terrain is chosen."""
+    h, w = shape
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    u, v = xs / max(1, w - 1), ys / max(1, h - 1)
+
+    def bump(cx: float, cy: float, r: float) -> np.ndarray:
+        return np.exp(-(((u - cx) ** 2 + (v - cy) ** 2) / (2 * r * r)))
+
+    if name == "valley":
+        z = 0.75 - 0.4 * np.exp(-((u - 0.5) ** 2) / (2 * 0.12 ** 2)) + 0.05 * (v - 0.5)
+    elif name == "two_peaks":
+        z = 0.35 + 0.45 * bump(0.3, 0.45, 0.13) + 0.35 * bump(0.72, 0.55, 0.11)
+    else:  # island
+        z = 0.3 + 0.45 * bump(0.5, 0.5, 0.2)
+    return np.clip(z, 0.0, 1.0).astype(np.float32)
+
+
+BUILTIN_TARGETS = {"island": "Island", "valley": "Valley", "two_peaks": "Two peaks"}
+
+
+class TerrainChallenge(GameMode):
+    """Rebuild a target landscape. Red on the sand means dig, blue means add."""
+
+    name = "Terrain Challenge"
+    description = "Match the target: dig where it's red, add sand where it's blue."
+    time_limit = 180.0
+    _TOLERANCE = 0.06    # normalised height error that counts as "close enough"
+    _WIN_ACCURACY = 90.0
+    _WIN_HOLD = 3.0       # seconds the match must stay above _WIN_ACCURACY
+    _STEP = 4             # analyse every 4th pixel; hints don't need full res
+
+    def __init__(self, target: np.ndarray | str = "island", target_name: str | None = None) -> None:
+        """*target* is a saved height map or a BUILTIN_TARGETS key."""
+        super().__init__()
+        self._target_src = target
+        if isinstance(target, str):
+            self.target_name = target_name or BUILTIN_TARGETS.get(target, target)
+        else:
+            self.target_name = target_name or "Saved terrain"
+        self._target = np.array([])
+        self._error = np.array([])
+        self._accuracy = 0.0
+        self._best = 0.0
+        self._held = 0.0
+        self._since_eval = 1.0
+        self._hint_cache: pygame.Surface | None = None
+        self._wash: pygame.Surface | None = None
+
+    def start(self, height_data: np.ndarray) -> None:
+        from dem_loader import fit_to
+
+        small = height_data[:: self._STEP, :: self._STEP]
+        if isinstance(self._target_src, str):
+            self._target = builtin_target(self._target_src, small.shape)
+        else:
+            self._target = np.clip(fit_to(self._target_src, small.shape), 0.0, 1.0)
+        self._evaluate(height_data)
+
+    def _evaluate(self, height_data: np.ndarray) -> None:
+        small = height_data[:: self._STEP, :: self._STEP]
+        if small.shape != self._target.shape:
+            from dem_loader import fit_to
+
+            small = fit_to(small, self._target.shape)
+        self._error = small - self._target   # >0: too high (dig), <0: too low (fill)
+        close = np.abs(self._error) <= self._TOLERANCE
+        self._accuracy = float(close.mean()) * 100.0
+        self._best = max(self._best, self._accuracy)
+        self._score = int(round(self._accuracy))
+        self._hint_cache = None
+
+    def _tick(self, height_data: np.ndarray, dt: float) -> None:
+        self._since_eval += dt
+        if self._since_eval >= 0.25:
+            self._since_eval = 0.0
+            self._evaluate(height_data)
+        self._held = self._held + dt if self._accuracy >= self._WIN_ACCURACY else 0.0
+        if self._held >= self._WIN_HOLD:
+            self._finish()
+
+    def _hints(self, size: tuple[int, int]) -> pygame.Surface:
+        if self._hint_cache is not None and self._hint_cache.get_size() == size:
+            return self._hint_cache
+        err = self._error
+        rgba = np.zeros((*err.shape, 4), dtype=np.uint8)
+        excess = np.clip((err - self._TOLERANCE) / 0.2, 0.0, 1.0)
+        deficit = np.clip((-err - self._TOLERANCE) / 0.2, 0.0, 1.0)
+        rgba[..., 0] = 235
+        rgba[..., 3] = (excess * 210).astype(np.uint8)
+        fill = deficit > 0
+        rgba[fill, 0] = 40
+        rgba[fill, 1] = 120
+        rgba[fill, 2] = 255
+        rgba[fill, 3] = (deficit[fill] * 210).astype(np.uint8)
+        small = pygame.image.frombuffer(rgba.tobytes(), (err.shape[1], err.shape[0]), "RGBA")
+        self._hint_cache = pygame.transform.smoothscale(small, size)
+        return self._hint_cache
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self._show_end_screen and self._error.size:
+            size = surface.get_size()
+            # Grey out the terrain colours first: blue would otherwise read as water.
+            if self._wash is None or self._wash.get_size() != size:
+                self._wash = pygame.Surface(size, pygame.SRCALPHA)
+                self._wash.fill((120, 120, 120, 175))
+            surface.blit(self._wash, (0, 0))
+            surface.blit(self._hints(size), (0, 0))
+        super().draw(surface)
+
+    def _draw_game(self, surface: pygame.Surface) -> None:
+        if self._error.size == 0:
+            return
+        sw = surface.get_width()
+        panel = pygame.Rect(sw - 230, 62, 220, 92)
+        _draw_panel(surface, panel, alpha=200)
+        surface.blit(_font(16).render(f"Target: {self.target_name}", True, _TEXT_SECONDARY),
+                     (panel.x + 10, panel.y + 8))
+        surface.blit(_font(26, bold=True).render(f"Match {self._accuracy:.0f}%", True, _TEXT_ACCENT),
+                     (panel.x + 10, panel.y + 28))
+        dig = float((self._error > self._TOLERANCE).mean()) * 100
+        fill = float((self._error < -self._TOLERANCE).mean()) * 100
+        surface.blit(_font(16).render(f"Dig {dig:.0f}%   Add {fill:.0f}%", True, _TEXT_PRIMARY),
+                     (panel.x + 10, panel.y + 62))
+
+    def _finish(self) -> None:
+        self._score = int(round(max(self._accuracy, self._best)))
+        if self._held >= self._WIN_HOLD:
+            self._result_text = f"Matched {self.target_name} in {_format_timer(self._elapsed)}!"
+        else:
+            self._result_text = f"Best match: {self._best:.0f}%"
+        self._star_rating = 3 if self._score >= 90 else 2 if self._score >= 75 else 1 if self._score >= 55 else 0
+        super()._finish()
+
+
 # ── Game Manager ───────────────────────────────────────────────────────────────
 
 _MODE_REGISTRY: dict[str, type[GameMode]] = {
@@ -676,6 +815,7 @@ _MODE_REGISTRY: dict[str, type[GameMode]] = {
     "volcano":   VolcanoDefense,
     "watershed": WatershedPuzzle,
     "biome":     BiomeSculpt,
+    "challenge": TerrainChallenge,
 }
 
 
@@ -687,12 +827,13 @@ class GameManager:
         self._just_started: bool = False
         self._just_ended: bool = False
 
-    def start_game(self, mode_name: str, height_data: np.ndarray) -> bool:
-        """Start a game mode by name. Returns True on success."""
+    def start_game(self, mode_name: str, height_data: np.ndarray, **options: Any) -> bool:
+        """Start a game mode by name. Returns True on success. *options* go to
+        the mode's constructor (e.g. TerrainChallenge's target)."""
         cls = _MODE_REGISTRY.get(mode_name)
         if cls is None:
             return False
-        self._active = cls()
+        self._active = cls(**options)
         self._active.start(height_data)
         self._just_started = True
         self._just_ended = False

@@ -192,10 +192,23 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
       </div>
       <div class="button-row">
         <button class="btn btn-secondary" type="button" data-action="calibrate_depth" id="calibrate-btn">Calibrate depth</button>
-        <button class="btn btn-secondary" type="button" data-action="save_snapshot">Save snapshot</button>
         <button class="btn btn-secondary" type="button" data-action="reset_terrain" id="reset-btn" hidden>Reset terrain</button>
       </div>
       <p class="row-hint" id="calibrate-hint">Calibrate with the sand flat and hands clear. Current range <span class="num" id="depth-range">–</span>.</p>
+    </fieldset>
+
+    <fieldset class="group" id="terrain-controls" disabled>
+      <legend class="group-title">Saved terrains</legend>
+      <div class="button-row">
+        <button class="btn btn-secondary" type="button" data-action="save_snapshot">Save snapshot <kbd>F5</kbd></button>
+      </div>
+      <p class="row-hint">Saves the sand as a DEM (.asc, heights in mm, opens in QGIS), an image, and a file you can rebuild later.</p>
+      <ul class="snapshot-list" id="snapshot-list"></ul>
+      <div class="row">
+        <span class="row-label">Timelapse <kbd>T</kbd></span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_timelapse" data-key="t" aria-label="Timelapse recording"></button>
+      </div>
+      <p class="row-hint" id="timelapse-hint"></p>
     </fieldset>
 
     <div class="app-head">
@@ -262,7 +275,8 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
     <div><dt><kbd>S</kbd></dt><dd>Sound</dd></div>
     <div><dt><kbd>V</kbd></dt><dd>Erupt volcano</dd></div>
     <div><dt><kbd>K</kbd></dt><dd>Earthquake</dd></div>
-    <div><dt><kbd>1</kbd>–<kbd>4</kbd></dt><dd>Start a game</dd></div>
+    <div><dt><kbd>1</kbd>–<kbd>5</kbd></dt><dd>Start a game</dd></div>
+    <div><dt><kbd>T</kbd></dt><dd>Timelapse on/off</dd></div>
     <div><dt><kbd>Esc</kbd></dt><dd>End game</dd></div>
   </dl>
 </div>

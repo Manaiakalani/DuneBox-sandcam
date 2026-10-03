@@ -592,6 +592,12 @@ class MouseSimulatorSensor(DepthSensor):
     def reset(self) -> None:
         self._map[:] = self.DEFAULT_LEVEL
 
+    def load_terrain(self, height_data: np.ndarray) -> None:
+        """Replace the sculpted map with a saved terrain (any size)."""
+        from dem_loader import fit_to
+
+        self._map = np.clip(fit_to(height_data, self._map.shape), 0.0, 1.0)
+
     def resize(self, width: int, height: int) -> None:
         from scipy.ndimage import zoom as _zoom
 

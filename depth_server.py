@@ -9,6 +9,7 @@ One port (default 8765) carries everything:
     GET  /api/session      {"pin_required": bool}
     GET  /api/auth?pin=    200 if the PIN is right, 401/429 otherwise
     GET  /qr.svg           QR code of the dashboard URL (requires `segno`)
+    GET  /snapshots/<terrain_YYYYMMDD_HHMMSS>.<npy|asc|png>   saved terrain download
     GET  /healthz          plain "ok"
     WS   /ws               state (JSON text), depth frames (binary), commands
 
@@ -36,6 +37,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import cv2
 import numpy as np
+
+from dem_loader import snapshot_path
 
 log = logging.getLogger(__name__)
 
@@ -305,6 +308,8 @@ class DepthStreamServer:
             return self._check_pin(connection, url.query) or self._qr(connection)
         if path == "/healthz":
             return self._response(connection, HTTPStatus.OK, b"ok", "text/plain")
+        if path.startswith("/snapshots/"):
+            return self._check_pin(connection, url.query) or self._snapshot(connection, path)
         return self._response(connection, HTTPStatus.NOT_FOUND, b"not found", "text/plain")
 
     def _check_pin(self, connection: Any, query: str) -> Any:
@@ -339,6 +344,23 @@ class DepthStreamServer:
         if ctype.startswith("text/") or ctype in ("application/javascript", "image/svg+xml"):
             ctype += "; charset=utf-8"
         return self._response(connection, HTTPStatus.OK, body, ctype)
+
+    def _snapshot(self, connection: Any, path: str) -> Any:
+        filename = path.rsplit("/", 1)[-1]
+        stem, dot, ext = filename.rpartition(".")
+        resolved = snapshot_path(stem, f".{ext}") if dot else None
+        if resolved is None:
+            return self._response(connection, HTTPStatus.NOT_FOUND, b"not found", "text/plain")
+        try:
+            body = resolved.read_bytes()
+        except OSError:
+            return self._response(connection, HTTPStatus.NOT_FOUND, b"not found", "text/plain")
+        ctype = {"png": "image/png", "asc": "text/plain; charset=us-ascii"}.get(
+            ext, "application/octet-stream"
+        )
+        response = self._response(connection, HTTPStatus.OK, body, ctype)
+        response.headers["Content-Disposition"] = f'attachment; filename="{resolved.name}"'
+        return response
 
     def _json(self, connection: Any, payload: Any) -> Any:
         body = json.dumps(payload, separators=(",", ":")).encode()
