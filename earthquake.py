@@ -13,7 +13,6 @@ import time
 import numpy as np
 import pygame
 
-
 # ── Detection thresholds ─────────────────────────────────────────────────────
 
 _PIXEL_CHANGE_THRESHOLD = 0.1   # min depth change per pixel (normalised 0-1)

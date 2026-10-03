@@ -75,7 +75,7 @@ class BridgeProtocolTests(unittest.TestCase):
 
     def test_large_but_valid_message_within_cap_parses(self):
         payload = "y" * (MAX_LINE_BYTES // 2)
-        line = ('{"type":"big","data":"%s"}\n' % payload).encode("utf-8")
+        line = (f'{{"type":"big","data":"{payload}"}}\n').encode()
         br = _run_service([line])
         msgs = br.poll()
         self.assertEqual(len(msgs), 1)

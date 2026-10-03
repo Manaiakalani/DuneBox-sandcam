@@ -7,12 +7,12 @@ when disabled or when OpenCV is not installed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from contextlib import contextmanager, nullcontext
 import math
 import sys
 import threading
 import time
+from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -47,7 +47,7 @@ _DEST_POINT_ORDER = {
 }
 
 
-def _corner_sample(marker: "_TrackedMarker") -> tuple[float, float]:
+def _corner_sample(marker: _TrackedMarker) -> tuple[float, float]:
     """Use the tag's image-extreme corner, not its centre."""
     pts = marker.corners
     if not pts:

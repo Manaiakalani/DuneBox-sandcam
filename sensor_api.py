@@ -620,16 +620,19 @@ class DummySensor(DepthSensor):
 
     @staticmethod
     def _generate_terrain(w: int, h: int) -> np.ndarray:
-        """Build a multi-octave simplex-ish noise terrain."""
-        xs = np.linspace(0, 4 * math.pi, w, dtype=np.float32)
+        """Build a multi-octave simplex-ish noise terrain.
+
+        x frequencies are multiples of 0.5 over a 4*pi span so the terrain
+        tiles horizontally; get_depth_frame scrolls it with np.roll."""
+        xs = np.linspace(0, 4 * math.pi, w, endpoint=False, dtype=np.float32)
         ys = np.linspace(0, 4 * math.pi, h, dtype=np.float32)
         xg, yg = np.meshgrid(xs, ys)
 
         terrain = (
             0.5
             + 0.25 * np.sin(xg) * np.cos(yg)
-            + 0.15 * np.sin(2.3 * xg + 0.7) * np.cos(1.7 * yg + 1.1)
-            + 0.10 * np.sin(4.1 * xg + 2.0) * np.cos(3.3 * yg + 0.5)
+            + 0.15 * np.sin(2.5 * xg + 0.7) * np.cos(1.7 * yg + 1.1)
+            + 0.10 * np.sin(4.0 * xg + 2.0) * np.cos(3.3 * yg + 0.5)
         )
         return np.clip(terrain, 0.0, 1.0).astype(np.float32)
 
@@ -1535,7 +1538,7 @@ def _import_pykinect2():
     _patch_pykinect2()
 
     def _do_import():
-        from pykinect2 import PyKinectV2, PyKinectRuntime  # noqa: F401
+        from pykinect2 import PyKinectRuntime, PyKinectV2  # noqa: F401
 
         return PyKinectV2, PyKinectRuntime
 

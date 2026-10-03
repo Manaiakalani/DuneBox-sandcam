@@ -12,7 +12,4 @@ from __future__ import annotations
 
 from sensor_api import (  # noqa: F401  — re-exports
     DepthSensor as DepthSource,
-    KinectV1Sensor as KinectV1Source,
-    MouseSimulatorSensor as MouseSimulator,
-    create_sensor,
 )

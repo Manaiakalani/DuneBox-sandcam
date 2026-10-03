@@ -31,8 +31,6 @@ import time
 import numpy as np
 import pygame
 
-from diagnostics import show_startup_diagnostics
-
 from ai_guide import (
     AsyncConnectionTester,
     GuideEngine,
@@ -40,31 +38,41 @@ from ai_guide import (
     TemplateNarrator,
     build_async_narrator,
 )
-from creatures import CreatureManager, MARKER_DINO_SPAWN, MARKER_EXTINCTION
+from bridge import AppBridge
+from creatures import MARKER_DINO_SPAWN, MARKER_EXTINCTION, CreatureManager
 from day_night import DayNightCycle
-from ecosystem import EcosystemManager
-# from depth_source import MouseSimulator
-from sensor_api import create_sensor
 from dem_loader import save_terrain_snapshot
+from depth_server import DepthStreamServer
+from diagnostics import show_startup_diagnostics
+from earthquake import EarthquakeDetector
+from ecosystem import EcosystemManager
+from game_modes import GameManager
 from interaction_engine import InteractionEngine
 from renderer import WATER_LEVEL, Renderer
-from game_modes import GameManager
+
+# from depth_source import MouseSimulator
+from sensor_api import create_sensor
 from sounds import SoundManager
-from ui import SCHEMES, Config, Sidebar, draw_guide_overlay
+from ui import (
+    SCHEMES,
+    SMOOTHING_LABELS,
+    Config,
+    Sidebar,
+    apply_smoothing_preset,
+    draw_guide_overlay,
+    smoothing_preset_of,
+)
+from volcano import (
+    MARKER_VOLCANO_PLACE,
+    MARKER_VOLCANO_TRIGGER,
+    VolcanoManager,
+)
 from webcam_observer import (
     AsyncCameraDiscovery,
     AsyncCameraTester,
     CalibrationData,
     WebcamObserver,
 )
-from bridge import AppBridge
-from depth_server import DepthStreamServer
-from volcano import (
-    MARKER_VOLCANO_PLACE,
-    MARKER_VOLCANO_TRIGGER,
-    VolcanoManager,
-)
-from earthquake import EarthquakeDetector
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +94,14 @@ DUNEBOX_COMMANDS = {
     "toggle_day_night": "Day/night toggled",
     "start_app": "Asked DuneBox to start",
 }
+
+
+def _as_float(value: object) -> float | None:
+    try:
+        num = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return num if np.isfinite(num) else None
 
 
 def _draw_startup_screen(
@@ -688,6 +704,10 @@ def main() -> int:
 
             # ── render ────────────────────────────────────────────────────────
             frame = source.get_frame()
+            if frame is not None and config.sea_level_offset:
+                # Raising the sea is the same as lowering every height, so
+                # water, creatures, games and the dashboard all stay in step.
+                frame = np.clip(frame - config.sea_level_offset, 0.0, 1.0).astype(np.float32)
 
             # Day/night cycle
             light_tint = None
@@ -734,7 +754,12 @@ def main() -> int:
             renderer.draw(scene, frame,
                           show_contours=config.show_contours,
                           colour_scheme=config.colour_scheme,
-                          light_tint=light_tint)
+                          light_tint=light_tint,
+                          contour_interval=config.contour_interval,
+                          contour_labels_cm_per_unit=(
+                              (config.max_depth_mm - config.min_depth_mm) / 10.0
+                              if config.contour_labels else None
+                          ))
 
             # Sky effects (stars, moon, sun) — after terrain, before creatures
             if day_night_enabled:
@@ -880,6 +905,10 @@ def main() -> int:
                     "theme": config.colour_scheme,
                     "themes": list(SCHEMES),
                     "contours": config.show_contours,
+                    "contour_interval": config.contour_interval,
+                    "contour_labels": config.contour_labels,
+                    "sea_level_offset": config.sea_level_offset,
+                    "smoothing": smoothing_preset_of(config),
                     "below_sea_level": (
                         round(float(np.mean(frame < WATER_LEVEL)), 3) if frame is not None else 0.0
                     ),
@@ -951,6 +980,31 @@ def main() -> int:
                         config.show_contours = not config.show_contours
                         config.request_save()
                         message = f"Contour lines {'on' if config.show_contours else 'off'}"
+                    elif action == "toggle_contour_labels":
+                        config.contour_labels = not config.contour_labels
+                        config.request_save()
+                        message = f"Elevation labels {'on' if config.contour_labels else 'off'}"
+                    elif action == "set_contour_interval":
+                        num = _as_float(value)
+                        if num is None or not 0.02 <= num <= 0.12:
+                            ok, message = False, "Contour spacing must be between 2% and 12%"
+                        else:
+                            config.contour_interval = num
+                            config.request_save()
+                            message = f"Contour spacing {num * 100:.0f}%"
+                    elif action == "set_sea_level":
+                        num = _as_float(value)
+                        if num is None or not -0.2 <= num <= 0.2:
+                            ok, message = False, "Sea level must be between -20% and +20%"
+                        else:
+                            config.sea_level_offset = num
+                            config.request_save()
+                            message = f"Sea level {num * 100:+.0f}%"
+                    elif action == "set_smoothing":
+                        if apply_smoothing_preset(config, str(value)):
+                            message = f"Smoothing: {SMOOTHING_LABELS[str(value)]}"
+                        else:
+                            ok, message = False, f"Unknown smoothing preset: {value}"
                     elif action == "toggle_creatures":
                         config.show_creatures = not config.show_creatures
                         config.request_save()

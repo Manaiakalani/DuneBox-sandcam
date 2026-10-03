@@ -13,7 +13,6 @@ import random
 import numpy as np
 import pygame
 
-
 # ── Phase boundaries (fraction of the 0.0–1.0 cycle) ─────────────────────────
 _NIGHT_1_END = 0.2
 _DAWN_END = 0.3

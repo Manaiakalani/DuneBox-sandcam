@@ -18,14 +18,15 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
 import pygame
-from sensor_api import create_sensor
-from renderer import Renderer
+
 from creatures import CreatureManager
-from interaction_engine import InteractionEngine
 from day_night import DayNightCycle
 from earthquake import EarthquakeDetector
 from ecosystem import EcosystemManager
 from game_modes import GameManager
+from interaction_engine import InteractionEngine
+from renderer import Renderer
+from sensor_api import create_sensor
 from volcano import VolcanoManager
 
 WIDTH, HEIGHT = 240, 180

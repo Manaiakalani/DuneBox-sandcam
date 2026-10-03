@@ -69,4 +69,4 @@ jobs:
         run: uv run --no-sync python smoke_headless.py 30
 
       - name: Unit tests
-        run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge test_creatures test_volcano test_sensor_api test_game_modes test_renderer test_depth_server -v
+        run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge test_creatures test_volcano test_sensor_api test_game_modes test_renderer test_depth_server test_ui -v

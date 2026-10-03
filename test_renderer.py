@@ -28,6 +28,39 @@ class RendererTests(unittest.TestCase):
         pixels = pygame.surfarray.array3d(target)
         self.assertGreater(int(pixels.max()) - int(pixels.min()), 20)
 
+    def test_wider_contour_spacing_draws_fewer_lines(self) -> None:
+        height = np.tile(np.linspace(0.5, 1.0, 200, dtype=np.float32), (40, 1))
+
+        def dark_pixels(interval: float) -> int:
+            renderer = Renderer(200, 40)
+            target = pygame.Surface((200, 40))
+            renderer.draw(target, height, show_contours=True, contour_interval=interval)
+            plain = pygame.Surface((200, 40))
+            Renderer(200, 40).draw(plain, height, show_contours=False)
+            a = pygame.surfarray.array3d(target).sum(axis=2)
+            b = pygame.surfarray.array3d(plain).sum(axis=2)
+            return int(np.count_nonzero(a < b * 0.6))
+
+        self.assertGreater(dark_pixels(0.02), dark_pixels(0.1))
+
+    def test_elevation_labels_report_height_above_sea_in_cm(self) -> None:
+        pygame.font.init()
+        renderer = Renderer(400, 200)
+        target = pygame.Surface((400, 200))
+        height = np.tile(np.linspace(0.3, 1.0, 400, dtype=np.float32), (200, 1))
+        renderer.draw(
+            target, height, show_contours=True, contour_interval=0.1, contour_labels_cm_per_unit=50.0,
+        )
+        texts = {text for _, _, text in renderer._labels}
+        self.assertTrue(texts)
+        for text in texts:
+            cm = float(text)
+            # Contours are multiples of 0.1 above the 0.46 waterline: 0.5 -> +2 cm, 0.6 -> +7 cm...
+            steps = ((cm / 50.0) + WATER_LEVEL) / 0.1
+            self.assertAlmostEqual(steps, round(steps), delta=0.1)
+        renderer.draw(target, height, show_contours=True, contour_labels_cm_per_unit=None)
+        self.assertEqual(renderer._labels, [])
+
     def test_water_pixels_are_blueish(self) -> None:
         renderer = Renderer(32, 32)
         target = pygame.Surface((32, 32))

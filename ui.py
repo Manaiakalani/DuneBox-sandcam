@@ -7,10 +7,10 @@ single source of truth read by main.py each frame.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import pathlib
-from typing import Iterable
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 import pygame
 
@@ -81,7 +81,38 @@ SLIDER_SPECS = {
     "reject": {"label": "Reject", "lo": 0, "hi": 400, "kind": "int"},
     "sharks": {"label": "Sharks", "lo": 0, "hi": 12, "kind": "int"},
     "dinosaurs": {"label": "Dinosaurs", "lo": 0, "hi": 12, "kind": "int"},
+    "sea": {"label": "Sea level", "lo": -0.2, "hi": 0.2, "kind": "float"},
+    "spacing": {"label": "Contour spacing", "lo": 0.02, "hi": 0.12, "kind": "float"},
 }
+
+# Each preset trades lag against stability: more blending and a longer
+# persistence delay hide sensor noise but make the sand react later.
+SMOOTHING_PRESETS: dict[str, dict[str, float | int]] = {
+    "responsive": {"temporal_alpha": 0.6, "change_threshold_mm": 25, "persistence_frames": 2},
+    "balanced": {"temporal_alpha": 0.35, "change_threshold_mm": 35, "persistence_frames": 4},
+    "stable": {"temporal_alpha": 0.15, "change_threshold_mm": 50, "persistence_frames": 8},
+}
+SMOOTHING_LABELS = {"responsive": "Responsive", "balanced": "Balanced", "stable": "Stable"}
+
+
+def smoothing_preset_of(config: Config) -> str:
+    """Name of the preset the current filter values match, or "custom"."""
+    for name, values in SMOOTHING_PRESETS.items():
+        if all(abs(float(getattr(config, k)) - float(v)) < 1e-6 for k, v in values.items()):
+            return name
+    return "custom"
+
+
+def apply_smoothing_preset(config: Config, name: str) -> bool:
+    values = SMOOTHING_PRESETS.get(name)
+    if values is None:
+        return False
+    config.temporal_alpha = float(values["temporal_alpha"])
+    config.change_threshold_mm = int(values["change_threshold_mm"])
+    config.persistence_frames = int(values["persistence_frames"])
+    config.filter_changed = True
+    config.request_save()
+    return True
 
 
 @dataclass
@@ -94,6 +125,9 @@ class Config:
     foreground_reject_mm: int = 120
     colour_scheme: str = "terrain"
     show_contours: bool = True
+    contour_interval: float = 0.05
+    contour_labels: bool = False
+    sea_level_offset: float = 0.0
     show_creatures: bool = True
     shark_count: int = 4
     dinosaur_count: int = 5
@@ -146,7 +180,7 @@ class Config:
     save_requested: bool = False
 
     @classmethod
-    def load(cls) -> "Config":
+    def load(cls) -> Config:
         config = cls()
         path = CONFIG_PATH
         if not path.exists() and EXAMPLE_CONFIG_PATH.exists():
@@ -221,6 +255,9 @@ class Config:
         if not config.vision_calibration_points or len(config.vision_calibration_points) != 4:
             config.vision_calibration_points = []
         config.sound_master_volume = max(0.0, min(1.0, float(config.sound_master_volume)))
+        config.contour_interval = max(0.02, min(0.12, float(config.contour_interval)))
+        config.contour_labels = bool(config.contour_labels)
+        config.sea_level_offset = max(-0.2, min(0.2, float(config.sea_level_offset)))
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
@@ -237,6 +274,9 @@ class Config:
             "foreground_reject_mm": self.foreground_reject_mm,
             "colour_scheme": self.colour_scheme,
             "show_contours": self.show_contours,
+            "contour_interval": self.contour_interval,
+            "contour_labels": self.contour_labels,
+            "sea_level_offset": self.sea_level_offset,
             "show_creatures": self.show_creatures,
             "shark_count": self.shark_count,
             "dinosaur_count": self.dinosaur_count,
@@ -397,6 +437,16 @@ class Sidebar:
                 config.show_contours = not config.show_contours
                 config.request_save()
                 return True
+
+            if layout.get("contour_labels", pygame.Rect(0, 0, 0, 0)).collidepoint(mx, my):
+                config.contour_labels = not config.contour_labels
+                config.request_save()
+                return True
+
+            for preset in SMOOTHING_PRESETS:
+                if layout.get(f"smoothing_{preset}", pygame.Rect(0, 0, 0, 0)).collidepoint(mx, my):
+                    apply_smoothing_preset(config, preset)
+                    return True
 
             if layout.get("creatures", pygame.Rect(0, 0, 0, 0)).collidepoint(mx, my):
                 config.show_creatures = not config.show_creatures
@@ -569,6 +619,19 @@ class Sidebar:
             y = self._draw_slider(surface, config, layout, key, ix, iw, y)
 
         y = self._section_header(surface, "Smoothing", sx, y + 4)
+        y = self._labelled_buttons(
+            surface,
+            layout,
+            prefix="smoothing",
+            label="Preset",
+            options=list(SMOOTHING_LABELS.items()),
+            active_key=smoothing_preset_of(config),
+            ix=ix,
+            iw=iw,
+            y=y,
+            columns=3,
+        )
+        y += 4
         for key in ("alpha", "threshold", "persist", "reject"):
             y = self._draw_slider(surface, config, layout, key, ix, iw, y)
 
@@ -584,6 +647,12 @@ class Sidebar:
 
         y = self._section_header(surface, "View", sx, y)
         y = self._toggle(surface, layout, "contours", "Contour lines", config.show_contours, ix, iw, y)
+        if config.show_contours:
+            y = self._toggle(
+                surface, layout, "contour_labels", "Elevation labels", config.contour_labels, ix, iw, y,
+            )
+            y = self._draw_slider(surface, config, layout, "spacing", ix, iw, y)
+        y = self._draw_slider(surface, config, layout, "sea", ix, iw, y)
         y = self._toggle(surface, layout, "creatures", "Creatures", config.show_creatures, ix, iw, y)
         for key in ("sharks", "dinosaurs"):
             y = self._draw_slider(surface, config, layout, key, ix, iw, y)
@@ -837,6 +906,12 @@ class Sidebar:
         elif key == "dinosaurs":
             config.dinosaur_count = int(value)
             config.request_save()
+        elif key == "sea":
+            config.sea_level_offset = float(value)
+            config.request_save()
+        elif key == "spacing":
+            config.contour_interval = float(value)
+            config.request_save()
         return True
 
     def _draw_slider(
@@ -949,6 +1024,8 @@ class Sidebar:
             "reject": config.foreground_reject_mm,
             "sharks": config.shark_count,
             "dinosaurs": config.dinosaur_count,
+            "sea": config.sea_level_offset,
+            "spacing": config.contour_interval,
         }[key]
 
     def _slider_value_text(self, key: str, value: float | int) -> str:
@@ -961,6 +1038,8 @@ class Sidebar:
             "reject": f"{int(value)} mm",
             "sharks": str(int(value)),
             "dinosaurs": str(int(value)),
+            "sea": f"{float(value) * 100:+.0f}%",
+            "spacing": f"{float(value) * 100:.0f}%",
         }[key]
 
     def _section_header(self, surface, label, sx, y):

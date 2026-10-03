@@ -12,7 +12,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pygame
 
-
 # ── Lightweight water-flow simulation ──────────────────────────────────────────
 
 _FLOW_RATE = 0.15  # fraction of excess transferred per step

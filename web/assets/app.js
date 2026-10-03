@@ -6,7 +6,11 @@
   const $ = (id) => document.getElementById(id);
   const THEME_LABELS = { terrain: "Terrain", heat: "Heat map", greyscale: "Greyscale", desert: "Desert" };
   const WATER_LEVEL = 0.46;        // renderer.WATER_LEVEL
-  const CONTOUR_INTERVAL = 0.05;   // renderer.CONTOUR_INTERVAL
+  const CONTOUR_INTERVAL = 0.05;   // renderer.CONTOUR_INTERVAL (default)
+  const RANGE_FORMAT = {
+    set_contour_interval: (v) => `${Math.round(v * 100)}%`,
+    set_sea_level: (v) => `${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v * 100))}%`,
+  };
   const ACK_TIMEOUT_MS = 4000;
 
   const params = new URLSearchParams(location.search);
@@ -224,7 +228,7 @@
     for (let i = 0; i < n; i++) px[i] = lut[height[i]];
     if (!state.contours) return;
     const sea = WATER_LEVEL * 255;
-    const step = CONTOUR_INTERVAL * 255;
+    const step = (state.contour_interval || CONTOUR_INTERVAL) * 255;
     for (let y = 1; y < h; y++) {
       for (let x = 1; x < w; x++) {
         const i = y * w + x;
@@ -328,8 +332,37 @@
     if (el) el.setAttribute("aria-checked", String(Boolean(on)));
   }
 
+  // Don't fight the user: a slider being dragged keeps its local value
+  // until a second after the last input event.
+  const lastRangeInput = new WeakMap();
+  function setRange(el, value) {
+    if (value == null) return;
+    if (performance.now() - (lastRangeInput.get(el) || 0) > 1000) el.value = String(value);
+    showRange(el);
+  }
+  function showRange(el) {
+    const pct = ((Number(el.value) - Number(el.min)) / (Number(el.max) - Number(el.min))) * 100;
+    el.style.setProperty("--pct", `${pct}%`);
+    const out = el.parentElement.querySelector("output");
+    if (out) out.textContent = RANGE_FORMAT[el.dataset.action](Number(el.value));
+  }
+  document.addEventListener("input", (ev) => {
+    if (!ev.target.matches("input.range")) return;
+    lastRangeInput.set(ev.target, performance.now());
+    showRange(ev.target);
+  });
+  document.addEventListener("change", (ev) => {
+    if (!ev.target.matches("input.range") || ev.target.closest("fieldset:disabled")) return;
+    lastRangeInput.set(ev.target, performance.now());
+    send(ev.target);
+  });
+
   function renderWorld(s) {
     setSwitch('#sandcam-controls [data-action="toggle_contours"]', s.contours);
+    setSwitch('#sandcam-controls [data-action="toggle_contour_labels"]', s.contour_labels);
+    $("contour-options").hidden = !s.contours;
+    setRange($("contour-interval"), s.contour_interval);
+    setRange($("sea-level"), s.sea_level_offset);
     setSwitch('#sandcam-controls [data-action="toggle_creatures"]', s.creatures && s.creatures.enabled);
     setSwitch('#sandcam-controls [data-action="toggle_ecosystem"]', s.ecosystem);
     setSwitch('#sandcam-controls [data-action="toggle_day_night"]', s.day_night && s.day_night.enabled);
@@ -397,6 +430,14 @@
     $("calibrate-hint").hidden = !sensor.can_calibrate;
     $("reset-btn").hidden = !sensor.can_reset;
     $("depth-range").textContent = sensor.depth_mm ? `${sensor.depth_mm[0]}–${sensor.depth_mm[1]} mm` : "–";
+    for (const b of $("smoothing-group").children) {
+      const on = b.dataset.value === s.smoothing;
+      b.setAttribute("aria-checked", String(on));
+      b.tabIndex = on || (s.smoothing === "custom" && b.dataset.value === "balanced") ? 0 : -1;
+    }
+    $("smoothing-hint").textContent = s.smoothing === "custom"
+      ? "Custom values from the sandcam sidebar. Pick a preset to replace them."
+      : "Responsive follows hands quickly; Stable hides flicker but lags.";
   }
 
   const DUNEBOX_STATES = {
@@ -476,6 +517,7 @@
     const id = nextId++;
     const msg = { type: "command", id, action: el.dataset.action, target: el.dataset.target || "sandcam" };
     if (el.dataset.value) msg.value = el.dataset.value;
+    else if (el.matches("input.range")) msg.value = Number(el.value);
     ws.send(JSON.stringify(msg));
     el.setAttribute("aria-busy", "true");
     const timer = setTimeout(() => {
@@ -519,14 +561,15 @@
 
   document.addEventListener("click", (ev) => {
     const el = ev.target.closest("[data-action]");
-    if (el && !el.disabled && !el.closest("fieldset:disabled")) send(el);
+    if (el && !el.matches("input") && !el.disabled && !el.closest("fieldset:disabled")) send(el);
   });
 
   // Arrow keys move between theme options (radiogroup pattern)
-  $("theme-group").addEventListener("keydown", (ev) => {
-    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(ev.key)) return;
+  document.addEventListener("keydown", (ev) => {
+    const group = ev.target.closest('.segmented[role="radiogroup"]');
+    if (!group || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(ev.key)) return;
     ev.preventDefault();
-    const items = [...$("theme-group").children];
+    const items = [...group.children];
     const i = items.indexOf(document.activeElement);
     const next = items[(i + (ev.key === "ArrowLeft" || ev.key === "ArrowUp" ? -1 : 1) + items.length) % items.length];
     next.focus();

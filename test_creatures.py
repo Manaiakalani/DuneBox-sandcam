@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 import pygame
 
-from creatures import CreatureManager, MARKER_DINO_SPAWN, TRex
+from creatures import MARKER_DINO_SPAWN, CreatureManager, TRex
 
 
 class CreatureManagerTests(unittest.TestCase):

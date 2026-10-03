@@ -14,7 +14,6 @@ from scipy.ndimage import uniform_filter
 
 from renderer import WATER_LEVEL
 
-
 # ── Biome classification ─────────────────────────────────────────────────────
 
 _BIOME_THRESHOLDS: list[tuple[float, str]] = [

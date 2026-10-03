@@ -2,7 +2,8 @@
 Renders a normalised height map as an AR-sandbox-style elevation image.
 
 Colour schemes : terrain, heat, greyscale, desert
-Contour lines  : drawn at fixed elevation intervals above the waterline
+Contour lines  : drawn at a configurable elevation interval above the waterline,
+                 optionally labelled with height above sea level in cm
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from __future__ import annotations
 import numpy as np
 import pygame
 from scipy.ndimage import gaussian_filter, zoom
-
 
 # ── colour maps  (normalised_height, (R, G, B)) ───────────────────────────────
 
@@ -75,10 +75,18 @@ def _build_lut(colormap: list[tuple[float, tuple[int, int, int]]]) -> np.ndarray
 _LUTS = {name: _build_lut(cm) for name, cm in _COLORMAPS.items()}
 
 
+_LABEL_CELL = 160          # px between elevation label candidates
+_LABEL_REFRESH_FRAMES = 15  # labels move with the sand, but not every frame
+
+
 class Renderer:
     def __init__(self, width: int, height: int) -> None:
         self._surf = pygame.Surface((width, height))
         self._resize_buffers(width, height)
+        self._label_font: pygame.font.Font | None = None
+        self._labels: list[tuple[int, int, str]] = []
+        self._label_age = _LABEL_REFRESH_FRAMES
+        self._label_sprites: dict[str, tuple[pygame.Surface, pygame.Surface]] = {}
 
     def _resize_buffers(self, width: int, height: int) -> None:
         self._display = np.empty((height, width), dtype=np.float32)
@@ -98,7 +106,11 @@ class Renderer:
         show_contours: bool = True,
         colour_scheme: str = "terrain",
         light_tint: tuple[float, float, float] | None = None,
+        contour_interval: float = CONTOUR_INTERVAL,
+        contour_labels_cm_per_unit: float | None = None,
     ) -> None:
+        """``contour_labels_cm_per_unit`` turns on elevation labels: it is the
+        real height in cm of the full 0..1 range (the calibrated depth span)."""
         # Recreate internal surface if window was resized
         if self._surf.get_size() != target.get_size():
             self._surf = pygame.Surface(target.get_size())
@@ -142,9 +154,10 @@ class Renderer:
         self._rgb[...] = self._rgb_f
 
         # Contour lines (above waterline only)
+        contour = None
         if show_contours:
             above_water = self._display >= WATER_LEVEL
-            quantized   = (self._display / CONTOUR_INTERVAL).astype(np.int32)
+            quantized   = (self._display / contour_interval).astype(np.int32)
             # Compare neighbours without wrapping the screen edges (np.roll would
             # compare the top row with the bottom, drawing false border contours).
             contour = np.zeros_like(quantized, dtype=bool)
@@ -163,3 +176,54 @@ class Renderer:
         # pygame surfarray is (W, H, 3) — transpose from numpy's (H, W, 3)
         pygame.surfarray.blit_array(self._surf, self._rgb.transpose(1, 0, 2))
         target.blit(self._surf, (0, 0))
+
+        if contour is not None and contour_labels_cm_per_unit:
+            self._label_age += 1
+            if self._label_age >= _LABEL_REFRESH_FRAMES:
+                self._label_age = 0
+                self._labels = self._find_labels(
+                    contour, self._display, contour_interval, contour_labels_cm_per_unit
+                )
+            self._draw_labels(target)
+        else:
+            self._labels = []
+            self._label_age = _LABEL_REFRESH_FRAMES
+
+    @staticmethod
+    def _find_labels(
+        contour: np.ndarray, display: np.ndarray, interval: float, cm_per_unit: float
+    ) -> list[tuple[int, int, str]]:
+        """One label per grid cell, on the first contour pixel found there,
+        giving that contour's height above sea level in centimetres."""
+        h, w = contour.shape
+        labels = []
+        half = _LABEL_CELL // 2
+        for cy in range(half // 2, h - 12, _LABEL_CELL):
+            for cx in range(half // 2, w - 24, _LABEL_CELL):
+                cell = contour[cy:cy + half, cx:cx + half]
+                hits = np.flatnonzero(cell)
+                if hits.size == 0:
+                    continue
+                py, px = divmod(int(hits[hits.size // 2]), cell.shape[1])
+                y, x = cy + py, cx + px
+                level = round(float(display[y, x]) / interval)
+                cm = (level * interval - WATER_LEVEL) * cm_per_unit
+                labels.append((x, y, f"{cm:+.0f}"))
+        return labels
+
+    def _draw_labels(self, target: pygame.Surface) -> None:
+        if self._label_font is None:
+            self._label_font = pygame.font.SysFont("consolas", 12, bold=True)
+        for x, y, text in self._labels:
+            sprites = self._label_sprites.get(text)
+            if sprites is None:
+                sprites = (
+                    self._label_font.render(text, True, (20, 20, 20)),
+                    self._label_font.render(text, True, (245, 245, 245)),
+                )
+                self._label_sprites[text] = sprites
+            ink, halo = sprites
+            r = ink.get_rect(center=(x, y))
+            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                target.blit(halo, r.move(dx, dy))
+            target.blit(ink, r)

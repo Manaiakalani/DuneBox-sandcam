@@ -106,6 +106,26 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
         <span class="row-label">Contour lines <kbd>C</kbd></span>
         <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_contours" data-key="c" aria-label="Contour lines"></button>
       </div>
+      <div class="sub-rows" id="contour-options">
+        <div class="row">
+          <span class="row-label">Elevation labels</span>
+          <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_contour_labels" aria-label="Elevation labels"></button>
+        </div>
+        <label class="row">
+          <span class="row-label">Spacing</span>
+          <span class="row-end">
+            <input class="range" type="range" min="0.02" max="0.12" step="0.01" data-action="set_contour_interval" id="contour-interval">
+            <output class="num range-value" for="contour-interval" id="contour-interval-value">5%</output>
+          </span>
+        </label>
+      </div>
+      <label class="row">
+        <span class="row-label">Sea level</span>
+        <span class="row-end">
+          <input class="range" type="range" min="-0.2" max="0.2" step="0.01" data-action="set_sea_level" id="sea-level">
+          <output class="num range-value" for="sea-level" id="sea-level-value">+0%</output>
+        </span>
+      </label>
       <div class="row">
         <span class="row-label">Creatures <kbd>G</kbd></span>
         <div class="row-end">
@@ -161,6 +181,15 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
 
     <fieldset class="group" id="system-controls" disabled>
       <legend class="group-title">Setup</legend>
+      <div class="row row-stack">
+        <span class="row-label" id="smoothing-label">Smoothing</span>
+        <div class="segmented segmented-3" role="radiogroup" aria-labelledby="smoothing-label" id="smoothing-group">
+          <button type="button" role="radio" aria-checked="false" data-action="set_smoothing" data-value="responsive">Responsive</button>
+          <button type="button" role="radio" aria-checked="false" data-action="set_smoothing" data-value="balanced">Balanced</button>
+          <button type="button" role="radio" aria-checked="false" data-action="set_smoothing" data-value="stable">Stable</button>
+        </div>
+        <p class="row-hint" id="smoothing-hint">Responsive follows hands quickly; Stable hides flicker but lags.</p>
+      </div>
       <div class="button-row">
         <button class="btn btn-secondary" type="button" data-action="calibrate_depth" id="calibrate-btn">Calibrate depth</button>
         <button class="btn btn-secondary" type="button" data-action="save_snapshot">Save snapshot</button>
