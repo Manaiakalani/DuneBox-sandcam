@@ -4,6 +4,8 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  const t = (text) => (window.DuneI18n ? window.DuneI18n.t(text) : text);
+  const pick = (value) => (window.DuneI18n ? window.DuneI18n.pick(value) : String(value ?? ""));
   const THEME_LABELS = { terrain: "Terrain", heat: "Heat map", greyscale: "Greyscale", desert: "Desert" };
   const WATER_LEVEL = 0.46;        // renderer.WATER_LEVEL
   const CONTOUR_INTERVAL = 0.05;   // renderer.CONTOUR_INTERVAL (default)
@@ -294,7 +296,7 @@
 
   function updateViewMeta() {
     if (!state) return;
-    $("view-meta").textContent = `${THEME_LABELS[state.theme] || state.theme} theme · preview ${streamFps} fps`;
+    $("view-meta").textContent = t(`${THEME_LABELS[state.theme] || state.theme} theme · preview ${streamFps} fps`);
   }
 
   // ── State → UI ────────────────────────────────────────────────────
@@ -726,7 +728,6 @@
 
   // ── Classroom: lessons and team scores ────────────────────────────
   const TEAM_COLOURS = ["#52a8ff", "#f5a524", "#3fcf8e", "#ff6166"];
-  const t = (text) => (window.DuneI18n ? window.DuneI18n.t(text) : text);
 
   let renderedLessons = "";
   let renderedDots = "";
@@ -737,27 +738,32 @@
     const c = s.classroom;
     if (!c) return;
     const { catalogue, active } = c.lessons;
+    const ui = window.DuneI18n ? window.DuneI18n.language : "en";
 
-    const catKey = JSON.stringify(catalogue);
+    const catKey = ui + JSON.stringify(catalogue);
     if (catKey !== renderedLessons) {
       renderedLessons = catKey;
       $("lesson-list").replaceChildren(...catalogue.map((lesson) => {
+        const title = pick(lesson.title);
         const li = document.createElement("li");
-        const name = Object.assign(document.createElement("span"), { className: "lesson-name", textContent: lesson.title });
+        li.setAttribute("translate", "no");
+        const name = Object.assign(document.createElement("span"), { className: "lesson-name", textContent: title });
+        const stepWord = t(lesson.steps === 1 ? "step" : "steps");
         const meta = Object.assign(document.createElement("span"), {
           className: "lesson-meta",
-          textContent: [lesson.level, lesson.minutes ? `${lesson.minutes} min` : "", `${lesson.steps} ${lesson.steps === 1 ? "step" : "steps"}`]
+          textContent: [pick(lesson.level), lesson.minutes ? `${lesson.minutes} ${t("min")}` : "", `${lesson.steps} ${stepWord}`]
             .filter(Boolean).join(" · "),
         });
-        meta.title = lesson.summary;
-        li.append(name, meta, smallButton("Start", "start_lesson", lesson.id, `Start lesson: ${lesson.title}`));
+        meta.title = pick(lesson.summary);
+        li.append(name, meta, smallButton("Start", "start_lesson", lesson.id, t(`Start lesson: ${title}`)));
         return li;
       }));
     }
     $("lesson-list").hidden = Boolean(active);
     $("lesson-live").hidden = !active;
     if (active) {
-      $("lesson-title").textContent = active.title;
+      $("lesson-live").setAttribute("translate", "no");
+      $("lesson-title").textContent = pick(active.title);
       $("lesson-progress").textContent = `${active.index + 1} / ${active.count}`;
       const dotKey = `${active.count}|${active.index}`;
       if (dotKey !== renderedDots) {
@@ -768,12 +774,12 @@
           return li;
         }));
       }
-      $("lesson-step-title").textContent = active.step_title;
-      $("lesson-text").textContent = active.text;
+      $("lesson-step-title").textContent = pick(active.step_title);
+      $("lesson-text").textContent = pick(active.text);
       const goal = $("lesson-goal");
       goal.hidden = !active.has_check;
       goal.dataset.done = String(active.done);
-      goal.textContent = active.done ? `✓ ${t("Goal reached")}` : active.hint;
+      goal.textContent = active.done ? `✓ ${t("Goal reached")}` : pick(active.hint);
       $("lesson-prev").disabled = active.index === 0;
       $("lesson-next").disabled = active.index >= active.count - 1;
     }
@@ -804,7 +810,7 @@
         const input = Object.assign(document.createElement("input"), {
           className: "input", type: "text", value: team.name, maxLength: 24,
         });
-        input.setAttribute("aria-label", `Team ${i + 1} name`);
+        input.setAttribute("aria-label", t(`Team ${i + 1} name`));
         input.addEventListener("change", () => {
           sendCommand({ action: "rename_team", value: { team: i, name: input.value } });
         });
@@ -814,12 +820,12 @@
         const minus = Object.assign(document.createElement("button"), {
           type: "button", className: "btn btn-secondary btn-sm", textContent: "−1",
         });
-        minus.setAttribute("aria-label", `Take a point from ${team.name}`);
+        minus.setAttribute("aria-label", t(`Take a point from ${team.name}`));
         minus.addEventListener("click", () => sendCommand({ action: "team_points", value: { team: i, points: -1 } }, minus));
         const plus = Object.assign(document.createElement("button"), {
           type: "button", className: "btn btn-secondary btn-sm", textContent: "+1",
         });
-        plus.setAttribute("aria-label", `Give a point to ${team.name}`);
+        plus.setAttribute("aria-label", t(`Give a point to ${team.name}`));
         plus.addEventListener("click", () => sendCommand({ action: "team_points", value: { team: i, points: 1 } }, plus));
         li.append(sw, input, score, minus, plus);
         return li;
@@ -861,12 +867,17 @@
   uiLang.addEventListener("change", () => {
     localStorage.setItem("dunebox.lang", uiLang.value);
     window.DuneI18n && window.DuneI18n.setLanguage(uiLang.value);
+    renderedLessons = renderedDots = renderedTeams = renderedAward = "";
+    if (state) {
+      renderClassroom(state);
+      renderButtons(state);
+    }
   });
 
   // ── Physical buttons ──────────────────────────────────────────────
   function buttonName(id) {
-    if (id.startsWith("keypad ")) return `Keypad ${id.slice(7)}`;
-    return /^\d+$/.test(id) ? `Button ${id}` : id;
+    if (id.startsWith("keypad ")) return t(`Keypad ${id.slice(7)}`);
+    return /^\d+$/.test(id) ? t(`Button ${id}`) : id;
   }
 
   let renderedButtons = "";
@@ -874,7 +885,8 @@
   function renderButtons(s) {
     const b = s.buttons;
     if (!b) return;
-    const key = JSON.stringify(b.buttons.map((x) => [x.id, x.action])) + Object.keys(b.actions).join();
+    const key = (window.DuneI18n ? window.DuneI18n.language : "en")
+      + JSON.stringify(b.buttons.map((x) => [x.id, x.action])) + Object.keys(b.actions).join();
     if (key !== renderedButtons && !$("button-map").contains(document.activeElement)) {
       renderedButtons = key;
       $("button-map").replaceChildren(...b.buttons.map((btn) => {
@@ -1073,7 +1085,7 @@
     const now = new Date();
     time.dateTime = now.toISOString();
     time.textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    li.append(document.createTextNode(text), time);
+    li.append(document.createTextNode(t(text)), time);
     list.prepend(li);
     while (list.children.length > 8) list.lastElementChild.remove();
     $("activity-empty").hidden = true;
@@ -1185,7 +1197,7 @@
     const li = document.createElement("li");
     li.className = "toast";
     li.dataset.tone = tone;
-    li.textContent = text;
+    li.textContent = t(text);
     list.append(li);
     while (list.children.length > 3) list.firstElementChild.remove();
     setTimeout(() => li.remove(), tone === "err" ? 7000 : 3500);

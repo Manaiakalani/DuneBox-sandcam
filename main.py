@@ -1390,7 +1390,7 @@ def main() -> int:
                         ok, message = False, f"Unknown lesson: {value}"
                     else:
                         apply_lesson_settings(settings)
-                        message = f"Lesson: {localized(lessons.lesson.title, config.language)}"
+                        message = "Lesson started"
                 elif action == "lesson_step":
                     if lessons.lesson is None:
                         ok, message = False, "No lesson is running"

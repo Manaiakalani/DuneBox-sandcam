@@ -1,8 +1,8 @@
 // Dashboard translations, keyed by the English text so the markup stays plain
 // English. Text set later by app.js is translated as it appears when it
-// matches a key exactly; messages with numbers in them stay in English.
-// To add a language: copy the `es` block, translate the values, add it to
-// DICTIONARIES and add an <option> to #ui-lang.
+// matches a key exactly, or a %s template. To add a language: copy the `es`
+// block, translate the values, add it to DICTIONARIES and add an <option> to
+// #ui-lang.
 (function () {
   "use strict";
 
@@ -270,6 +270,133 @@
     "Not connected to the sandbox.": "No hay conexión con el arenero.",
     "No response from the sandbox. Check that sandcam is still running.":
       "El arenero no responde. Comprueba que sandcam sigue abierto.",
+
+    // Confirmations from the sandbox (exact, then %s templates)
+    "on": "sí",
+    "off": "no",
+    "step": "paso",
+    "steps": "pasos",
+    "min": "min",
+    "Water simulation toggled": "Simulación de agua cambiada",
+    "Lava mode toggled": "Modo lava cambiado",
+    "Volcano erupting": "Volcán en erupción",
+    "Theme changed": "Colores cambiados",
+    "Day/night toggled": "Día y noche cambiado",
+    "Asked DuneBox to start": "Se pidió a DuneBox que arranque",
+    "Water drained": "Agua vaciada",
+    "Evaporation updated": "Evaporación actualizada",
+    "Hand rain toggled": "Lluvia con las manos cambiada",
+    "Erosion view toggled": "Vista de erosión cambiada",
+    "Detecting the sand area": "Detectando la zona de arena",
+    "Calibrating the projector": "Calibrando el proyector",
+    "Full calibration started": "Calibración completa empezada",
+    "Confirmed": "Confirmado",
+    "Calibration cancelled": "Calibración cancelada",
+    "Sound muted": "Sonido silenciado",
+    "Sound on": "Sonido activado",
+    "Cycle paused": "Ciclo en pausa",
+    "Cycle resumed": "Ciclo reanudado",
+    "Volcano erupting at the centre": "Volcán en erupción en el centro",
+    "Earthquake triggered": "Terremoto lanzado",
+    "Game ended": "Juego terminado",
+    "No game is running": "No hay ningún juego en marcha",
+    "Lesson ended": "Lección terminada",
+    "Lesson started": "Lección empezada",
+    "No lesson is running": "No hay ninguna lección en marcha",
+    "Scoreboard off": "Marcador apagado",
+    "Scores reset": "Puntos a cero",
+    "Terrain reset": "Relieve reiniciado",
+    "Open days updated": "Días abiertos actualizados",
+    "Pick at least one day": "Elige al menos un día",
+    "Awake until the next opening or closing time": "Encendido hasta el próximo cambio de horario",
+    "Projector control off": "Control del proyector apagado",
+    "Add the projector's IP address first": "Pon primero la dirección IP del proyector",
+    "Opening hours on": "Horario activado",
+    "Opening hours off": "Horario desactivado",
+    "Arduino buttons on": "Botones Arduino activados",
+    "Arduino buttons off": "Botones Arduino desactivados",
+    "Sensor auto-reconnect on": "Reconexión automática activada",
+    "Sensor auto-reconnect off": "Reconexión automática desactivada",
+    "Contour lines on": "Curvas de nivel visibles",
+    "Contour lines off": "Curvas de nivel ocultas",
+    "Elevation labels on": "Alturas visibles",
+    "Elevation labels off": "Alturas ocultas",
+    "Creatures on": "Criaturas visibles",
+    "Creatures off": "Criaturas ocultas",
+    "Ecosystem on": "Plantas activadas",
+    "Ecosystem off": "Plantas desactivadas",
+    "Day/night cycle on": "Ciclo de día y noche activado",
+    "Day/night cycle off": "Ciclo de día y noche desactivado",
+    "Scoreboard shown on the sand": "Marcador visible en la arena",
+    "Scoreboard hidden on the sand": "Marcador oculto en la arena",
+    "Only the simulator terrain can be reset": "Solo se puede reiniciar el relieve del simulador",
+    "Team names can't be empty": "El nombre del equipo no puede estar vacío",
+    "Couldn't change that team's score": "No se pudo cambiar la puntuación de ese equipo",
+    "No game score to award": "No hay puntos de un juego para asignar",
+    "No valid depth. Flatten the sand and clear hands away, then retry.":
+      "No hay profundidad válida. Alisa la arena, quita las manos y vuelve a intentarlo.",
+    "Opening must be before closing, as HH:MM-HH:MM":
+      "La apertura tiene que ser antes del cierre, en formato HH:MM-HH:MM",
+    "Contour spacing must be between 2% and 12%": "La separación debe estar entre el 2% y el 12%",
+    "Sea level must be between -20% and +20%": "El nivel del mar debe estar entre -20% y +20%",
+    "Sea level step must be a number": "El paso del nivel del mar debe ser un número",
+    "Number of teams must be a number": "El número de equipos debe ser un número",
+    "DuneBox (C++) isn't connected. Start it on this PC.":
+      "DuneBox (C++) no está conectado. Ábrelo en este PC.",
+    "Theme: %s": "Tema: %s",
+    "Unknown theme: %s": "Tema desconocido: %s",
+    "Unknown game: %s": "Juego desconocido: %s",
+    "Unknown lesson: %s": "Lección desconocida: %s",
+    "Unknown command: %s": "Orden desconocida: %s",
+    "Unknown DuneBox command: %s": "Orden de DuneBox desconocida: %s",
+    "Unknown evaporation level: %s": "Nivel de evaporación desconocido: %s",
+    "Unknown smoothing preset: %s": "Suavizado desconocido: %s",
+    "Unknown button action: %s": "Acción de botón desconocida: %s",
+    "Unknown projector power: %s": "Potencia de proyector desconocida: %s",
+    "Unsupported language: %s": "Idioma no admitido: %s",
+    "Contour spacing %s": "Separación %s",
+    "Sea level %s": "Nivel del mar %s",
+    "Smoothing: %s": "Suavizado: %s",
+    "Creature set: %s": "Grupo de criaturas: %s",
+    "Cycle speed %s": "Velocidad del ciclo %s",
+    "Started %s": "Empezado: %s",
+    "Lesson: %s": "Lección: %s",
+    "Step %s of %s": "Paso %s de %s",
+    "Language on the sand: %s": "Idioma en la arena: %s",
+    "Saved %s (terrain, DEM and image)": "Guardado %s (relieve, MDE e imagen)",
+    "Loaded %s into the simulator": "Cargado %s en el simulador",
+    "Rebuild %s: dig red areas, fill blue ones": "Reconstruir %s: cava lo rojo, rellena lo azul",
+    "Terrain challenge: %s": "Reto de relieve: %s",
+    "Terrain challenge: rebuild %s": "Reto de relieve: reconstruir %s",
+    "Timelapse stopped: %s frames in %s": "Timelapse parado: %s fotogramas en %s",
+    "Timelapse recording every %ss to %s": "Timelapse: un fotograma cada %s s en %s",
+    "Open %s": "Abierto %s",
+    "Projector: %s": "Proyector: %s",
+    "Turning the projector on": "Encendiendo el proyector",
+    "Turning the projector off": "Apagando el proyector",
+    "Not an IP address or host name: %s": "No es una IP ni un nombre de equipo: %s",
+    "%s can't auto-calibrate depth": "%s no puede calibrar la profundidad solo",
+    "Depth calibrated: %s": "Profundidad calibrada: %s",
+    "%s teams": "%s equipos",
+    "%s points to %s": "%s puntos para %s",
+    "Renamed to %s": "Nombre cambiado a %s",
+    "Couldn't save snapshot: %s": "No se pudo guardar: %s",
+    "Couldn't load terrain: %s": "No se pudo cargar el relieve: %s",
+    "Couldn't start timelapse: %s": "No se pudo empezar el timelapse: %s",
+    "Keypad %s": "Teclado %s",
+    "Button %s": "Botón %s",
+    "Start lesson: %s": "Empezar lección: %s",
+    "Team %s name": "Nombre del equipo %s",
+    "Take a point from %s": "Quitar un punto a %s",
+    "Give a point to %s": "Dar un punto a %s",
+    "Heard “%s”, but it isn't a command. Try “erupt the volcano” or “heat map”.":
+      "Oí “%s”, pero no es una orden. Prueba con “erupt the volcano” o “heat map”.",
+    "3D needs WebGL 2, which this browser doesn't support.":
+      "La vista 3D necesita WebGL 2, y este navegador no lo tiene.",
+    "Address selected. Press Ctrl+C to copy.": "Dirección seleccionada. Pulsa Ctrl+C para copiar.",
+    "Microphone blocked. Allow it in the browser's site settings.":
+      "El micrófono está bloqueado. Permítelo en los ajustes del sitio del navegador.",
+    "%s theme · preview %s fps": "%s · vista previa %s ips",
   };
 
   const DICTIONARIES = { es };
@@ -280,10 +407,38 @@
   const attrState = new WeakMap();
   let lang = "en";
 
+  function escapeRe(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function applyTemplate(english, dict) {
+    const keys = Object.keys(dict).filter((k) => k.includes("%s"))
+      .sort((a, b) => b.length - a.length);
+    for (const key of keys) {
+      const re = new RegExp("^" + escapeRe(key).replace(/%s/g, "(.+)") + "$");
+      const m = english.match(re);
+      if (!m) continue;
+      let i = 1;
+      return dict[key].replace(/%s/g, () => lookup(m[i++]));
+    }
+    return english;
+  }
+
   function lookup(english) {
+    if (english == null) return "";
+    english = String(english);
     if (lang === "en") return english;
     const dict = DICTIONARIES[lang];
-    return (dict && dict[english]) || english;
+    if (!dict) return english;
+    if (dict[english]) return dict[english];
+    return applyTemplate(english, dict);
+  }
+
+  function pick(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return String(value[lang] || value.en || Object.values(value)[0] || "");
+    }
+    return value == null ? "" : String(value);
   }
 
   function translateText(node) {
@@ -347,6 +502,7 @@
   window.DuneI18n = {
     setLanguage,
     t: lookup,
+    pick,
     get language() { return lang; },
     languages: ["en", ...Object.keys(DICTIONARIES)],
   };

@@ -57,11 +57,12 @@ class LessonTests(unittest.TestCase):
         self.assertTrue(player.active_status("es")["done"])
         self.assertEqual(player.go(3)["sea_level"], 0.1)
         self.assertEqual(player.go(99), {"sea_level": 0})     # clamps to the last step
-        status = player.status("es")
-        self.assertEqual(status["active"]["step_title"], "Hablemos")
+        status = player.status()
+        self.assertEqual(localized(status["active"]["step_title"], "es"), "Hablemos")
+        self.assertEqual(localized(status["active"]["title"], "en"), "Islands and rising seas")
         self.assertEqual(status["active"]["index"], 4)
         player.stop()
-        self.assertIsNone(player.status("en")["active"])
+        self.assertIsNone(player.status()["active"])
 
     def test_measure(self):
         frame = np.full((40, 40), 0.3, np.float32)

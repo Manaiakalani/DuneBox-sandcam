@@ -162,20 +162,40 @@ class LessonPlayer:
             return True
         return False
 
-    def status(self, lang: str) -> dict[str, Any]:
+    def status(self, _lang: str | None = None) -> dict[str, Any]:
+        """Dashboard payload. Title, summary, level and step text stay bilingual
+        (``{"en": ..., "es": ...}`` or a plain string) so the tablet can pick a
+        language independently of the sand."""
         catalogue = [
             {
                 "id": lesson.id,
-                "title": localized(lesson.title, lang),
-                "summary": localized(lesson.summary, lang),
-                "level": localized(lesson.level, lang),
+                "title": lesson.title,
+                "summary": lesson.summary,
+                "level": lesson.level,
                 "minutes": lesson.minutes,
                 "steps": len(lesson.steps),
                 "languages": lesson.languages,
             }
             for lesson in self.lessons.values()
         ]
-        return {"catalogue": catalogue, "active": self.active_status(lang)}
+        return {"catalogue": catalogue, "active": self.active_fields()}
+
+    def active_fields(self) -> dict[str, Any] | None:
+        if self.lesson is None:
+            return None
+        step = self.step or {}
+        check = step.get("check")
+        return {
+            "id": self.lesson.id,
+            "title": self.lesson.title,
+            "index": self.index,
+            "count": len(self.lesson.steps),
+            "step_title": step.get("title"),
+            "text": step.get("text") or "",
+            "has_check": check is not None,
+            "done": self.done,
+            "hint": check.get("hint") if check and not self.done else "",
+        }
 
     def active_status(self, lang: str) -> dict[str, Any] | None:
         if self.lesson is None:
