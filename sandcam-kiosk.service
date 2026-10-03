@@ -1,0 +1,22 @@
+# Linux equivalent of kiosk.ps1: starts sandcam at sign-in and restarts it if it stops.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp sandcam-kiosk.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now sandcam-kiosk
+#
+# Assumes the repo is at ~/DuneBox-sandcam; edit WorkingDirectory if not.
+[Unit]
+Description=DuneBox sandcam (kiosk)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+WorkingDirectory=%h/DuneBox-sandcam
+ExecStart=/usr/bin/env uv run --frozen --with "websockets>=12.0" python main.py
+Restart=always
+RestartSec=5
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=graphical-session.target

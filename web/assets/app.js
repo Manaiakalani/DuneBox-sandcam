@@ -131,7 +131,7 @@
   }
 
   function setEnabled(on) {
-    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls", "terrain-controls"]) {
+    for (const id of ["sandcam-controls", "events-controls", "games-controls", "system-controls", "kiosk-controls", "terrain-controls"]) {
       $(id).disabled = !on;
     }
     if (!on) $("dunebox-controls").disabled = true;
@@ -307,6 +307,7 @@
     renderGames(s);
     renderSetup(s);
     renderTerrains(s);
+    renderKiosk(s);
     renderDuneBox(s);
     renderPairing(s.dashboard);
     updateViewMeta();
@@ -635,6 +636,88 @@
       }
       return li;
     }));
+  }
+
+  // ── Unattended (opening hours, projector, reconnect) ──────────────
+  const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
+  const DAY_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+  $("day-chips").replaceChildren(...DAY_LETTERS.map((letter, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "day-chip";
+    b.dataset.day = String(i);
+    b.textContent = letter;
+    b.setAttribute("aria-label", DAY_FULL[i]);
+    b.setAttribute("aria-pressed", "false");
+    return b;
+  }));
+  $("day-chips").addEventListener("click", (ev) => {
+    const chip = ev.target.closest(".day-chip");
+    if (!chip || !state || !state.kiosk) return;
+    const days = new Set(state.kiosk.days);
+    if (days.has(chip.dataset.day)) days.delete(chip.dataset.day); else days.add(chip.dataset.day);
+    if (!days.size) return toast("Pick at least one day", "err");
+    chip.setAttribute("aria-pressed", String(days.has(chip.dataset.day)));
+    sendCommand({ action: "set_days", value: [...days].sort().join("") });
+  });
+
+  function sendHours() {
+    const open = $("open-time").value;
+    const close = $("close-time").value;
+    if (!open || !close) return;
+    sendCommand({ action: "set_hours", value: `${open}-${close}` });
+  }
+  $("open-time").addEventListener("change", sendHours);
+  $("close-time").addEventListener("change", sendHours);
+
+  function sendProjectorHost() {
+    const host = $("projector-host").value.trim();
+    if (state && state.kiosk && host === state.kiosk.projector.host) return;
+    sendCommand({ action: "set_projector_host", value: host });
+  }
+  $("projector-host").addEventListener("change", sendProjectorHost);
+  $("projector-host").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); ev.target.blur(); }
+  });
+
+  // Inputs keep what the user is typing; state only fills them when idle
+  function setInput(el, value) {
+    if (document.activeElement !== el) el.value = value;
+  }
+
+  const POWER_LABELS = { on: "on", off: "off", warming: "warming up", cooling: "cooling down" };
+  function renderKiosk(s) {
+    const k = s.kiosk;
+    if (!k) return;
+    setSwitch('#kiosk-controls [data-action="toggle_schedule"]', k.enabled);
+    setSwitch('#kiosk-controls [data-action="toggle_auto_reconnect"]', s.sensor && s.sensor.auto_reconnect);
+    $("schedule-options").hidden = !k.enabled;
+    const [open, close] = (k.hours || "").split("-");
+    setInput($("open-time"), open || "");
+    setInput($("close-time"), close || "");
+    for (const chip of $("day-chips").children) {
+      chip.setAttribute("aria-pressed", String(k.days.includes(chip.dataset.day)));
+    }
+    $("schedule-hint").textContent = !k.enabled
+      ? "Outside opening hours the projection goes dark and the projector switches off."
+      : k.asleep
+        ? `Closed. Opens ${k.next_change || "on the next open day"}.`
+        : k.open
+          ? `Open now${k.next_change ? `. Closes ${k.next_change}` : ""}.`
+          : `Woken outside opening hours${k.next_change ? `. Opens ${k.next_change}` : ""}.`;
+    $("wake-row").hidden = !k.asleep;
+
+    const p = k.projector;
+    setInput($("projector-host"), p.host);
+    $("projector-on").disabled = !p.configured;
+    $("projector-off").disabled = !p.configured;
+    $("projector-hint").textContent = !p.configured
+      ? "Turns a networked projector on and off with the opening hours. Set a password in sandcam-settings.json if it needs one."
+      : p.error
+        ? `Couldn't switch the projector: ${p.error}`
+        : p.power === "unknown"
+          ? "Projector set. Power state appears after the first command."
+          : `Projector ${POWER_LABELS[p.power] || p.power}.`;
   }
 
   const DUNEBOX_STATES = {

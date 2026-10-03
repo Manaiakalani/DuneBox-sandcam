@@ -210,6 +210,42 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
       <p class="row-hint" id="calibrate-hint">Calibrate with the sand flat and hands clear. Current range <span class="num" id="depth-range">–</span>.</p>
     </fieldset>
 
+    <fieldset class="group" id="kiosk-controls" disabled>
+      <legend class="group-title">Unattended</legend>
+      <div class="row">
+        <span class="row-label">Opening hours</span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_schedule" aria-label="Opening hours"></button>
+      </div>
+      <div class="sub-rows" id="schedule-options" hidden>
+        <div class="row">
+          <span class="row-label">Hours</span>
+          <span class="row-end time-range">
+            <input class="input input-time" type="time" id="open-time" step="900" aria-label="Opening time">
+            <span aria-hidden="true">–</span>
+            <input class="input input-time" type="time" id="close-time" step="900" aria-label="Closing time">
+          </span>
+        </div>
+        <div class="day-chips" role="group" aria-label="Open days" id="day-chips"></div>
+      </div>
+      <p class="row-hint" id="schedule-hint">Outside opening hours the projection goes dark and the projector switches off.</p>
+      <div class="button-row" id="wake-row" hidden>
+        <button class="btn btn-primary" type="button" data-action="wake">Wake until next change</button>
+      </div>
+      <div class="row row-stack">
+        <label class="row-label" for="projector-host">Projector (PJLink)</label>
+        <div class="input-row">
+          <input class="input" type="text" id="projector-host" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="IP address, e.g. 192.168.1.50">
+          <button class="btn btn-secondary btn-sm" type="button" data-action="projector_power" data-value="on" id="projector-on">On</button>
+          <button class="btn btn-secondary btn-sm" type="button" data-action="projector_power" data-value="off" id="projector-off">Off</button>
+        </div>
+        <p class="row-hint" id="projector-hint">Turns a networked projector on and off with the opening hours. Set a password in sandcam-settings.json if it needs one.</p>
+      </div>
+      <div class="row">
+        <span class="row-label">Reconnect camera automatically</span>
+        <button class="switch" type="button" role="switch" aria-checked="false" data-action="toggle_auto_reconnect" aria-label="Reconnect camera automatically"></button>
+      </div>
+    </fieldset>
+
     <fieldset class="group" id="terrain-controls" disabled>
       <legend class="group-title">Saved terrains</legend>
       <div class="button-row">

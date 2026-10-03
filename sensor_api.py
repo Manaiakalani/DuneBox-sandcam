@@ -1429,6 +1429,11 @@ def create_sensor(config: dict, **kwargs) -> DepthSensor:
     return sim
 
 
+def create_exact(sensor_type: str, **kwargs) -> DepthSensor | None:
+    """Create and connect exactly *sensor_type* (no fallback); None if unavailable."""
+    return _try_create(sensor_type, kwargs)
+
+
 def _try_create(
     sensor_type: str, kwargs: dict
 ) -> DepthSensor | None:

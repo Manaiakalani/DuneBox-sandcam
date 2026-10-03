@@ -17,3 +17,4 @@ _launch.log
 # Operator output: saved terrains and timelapse frames
 assets/terrains/saved/
 assets/timelapse/
+kiosk.log

@@ -14,6 +14,8 @@ from dataclasses import dataclass
 
 import pygame
 
+from kiosk import parse_hours
+
 # ── palette (DESIGN.md tokens, shared with the web dashboard) ────────────────
 _BG         = (10, 10, 10)
 _SURFACE    = (17, 17, 17)
@@ -138,6 +140,12 @@ class Config:
     windowed_h: int = 650
     sensor_type: str = "kinect_v2_sdk"
     sensor_fallback: str = "mouse_simulator"
+    sensor_auto_reconnect: bool = True
+    kiosk_schedule: bool = False
+    kiosk_hours: str = "09:00-17:00"
+    kiosk_days: str = "01234"         # Mon=0 … Sun=6
+    projector_host: str = ""          # PJLink projector IP; empty = no power control
+    projector_password: str = ""
     ai_enabled: bool = False
     guide_enabled: bool = True
     guide_challenges_enabled: bool = True
@@ -260,6 +268,13 @@ class Config:
         config.contour_labels = bool(config.contour_labels)
         config.sea_level_offset = max(-0.2, min(0.2, float(config.sea_level_offset)))
         config.timelapse_interval_s = max(1.0, min(600.0, float(config.timelapse_interval_s)))
+        config.sensor_auto_reconnect = bool(config.sensor_auto_reconnect)
+        config.kiosk_schedule = bool(config.kiosk_schedule)
+        if not isinstance(config.kiosk_hours, str) or parse_hours(config.kiosk_hours) is None:
+            config.kiosk_hours = "09:00-17:00"
+        config.kiosk_days = "".join(sorted(set(str(config.kiosk_days)) & set("0123456")))
+        config.projector_host = str(config.projector_host or "").strip()
+        config.projector_password = str(config.projector_password or "")
         config.depth_server_port = max(1024, min(65535, int(config.depth_server_port)))
         config.depth_server_max_fps = max(1, min(60, int(config.depth_server_max_fps)))
         config.depth_server_host = str(config.depth_server_host).strip() or "127.0.0.1"
@@ -304,6 +319,12 @@ class Config:
             "vision_calibration_points": self.vision_calibration_points or [],
             "sensor_type": self.sensor_type,
             "sensor_fallback": self.sensor_fallback,
+            "sensor_auto_reconnect": self.sensor_auto_reconnect,
+            "kiosk_schedule": self.kiosk_schedule,
+            "kiosk_hours": self.kiosk_hours,
+            "kiosk_days": self.kiosk_days,
+            "projector_host": self.projector_host,
+            "projector_password": self.projector_password,
             "sound_enabled": self.sound_enabled,
             "sound_master_volume": self.sound_master_volume,
             "depth_server_enabled": self.depth_server_enabled,

@@ -26,8 +26,10 @@ Esc / Q     quit
 """
 
 import logging
+import re
 import sys
 import time
+from datetime import datetime
 
 import numpy as np
 import pygame
@@ -50,10 +52,11 @@ from ecosystem import EcosystemManager
 from game_modes import BUILTIN_TARGETS, GameManager
 from health import SurfaceHealth
 from interaction_engine import InteractionEngine
+from kiosk import Kiosk, SensorReconnector, parse_hours
 from renderer import WATER_LEVEL, Renderer
 
 # from depth_source import MouseSimulator
-from sensor_api import create_sensor
+from sensor_api import create_exact, create_sensor
 from sounds import SoundManager
 from timelapse import TimelapseRecorder
 from ui import (
@@ -106,6 +109,11 @@ DUNEBOX_COMMANDS = {
     "calibration_cancel": "Calibration cancelled",
 }
 EVAPORATION_LEVELS = ("off", "slow", "fast")
+SIMULATED_SENSORS = ("mouse_simulator", "dummy")
+
+
+def _is_simulated(source) -> bool:
+    return source.get_sensor_name().startswith(("Mouse", "Dummy"))
 
 
 def _as_float(value: object) -> float | None:
@@ -446,6 +454,28 @@ def main() -> int:
     eco_enabled = False
     timelapse = TimelapseRecorder(interval=config.timelapse_interval_s)
     surface_health = SurfaceHealth()
+    kiosk = Kiosk(
+        enabled=config.kiosk_schedule,
+        hours=config.kiosk_hours,
+        days=config.kiosk_days,
+        projector_host=config.projector_host,
+        projector_password=config.projector_password,
+    )
+
+    def _connect_configured_sensor():
+        return create_exact(
+            config.sensor_type,
+            width=render_w,
+            height=render_h,
+            min_depth_mm=config.min_depth_mm,
+            max_depth_mm=config.max_depth_mm,
+            temporal_alpha=config.temporal_alpha,
+            change_threshold_mm=config.change_threshold_mm,
+            persistence_frames=config.persistence_frames,
+            foreground_reject_mm=config.foreground_reject_mm,
+        )
+
+    reconnector = SensorReconnector(_connect_configured_sensor)
     snapshots: list[dict] = []
     snapshots_dirty = True
     snapshots_checked = 0.0
@@ -463,12 +493,32 @@ def main() -> int:
     try:
         running = True
         while running:
-            dt = clock.tick(FPS) / 1000.0
+            # Outside opening hours the screen is black, so idle at a low rate
+            dt = clock.tick(FPS if not kiosk.asleep else 10) / 1000.0
+            kiosk.update(datetime.now())
+
+            if config.sensor_auto_reconnect and config.sensor_type not in SIMULATED_SENSORS:
+                fresh = reconnector.poll(
+                    time.monotonic(), source, simulated=_is_simulated(source)
+                )
+                if fresh is not None:
+                    old_source, source = source, fresh
+                    try:
+                        old_source.close()
+                    except Exception:
+                        logger.exception("Closing the previous sensor failed")
+                    logger.info("Sensor connected: %s", source.get_sensor_name())
+                    status_flash_text = f"{source.get_sensor_name()} connected"
+                    status_flash_timer = 3.0
 
             # ── events ────────────────────────────────────────────────────────
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                    continue
+
+                if kiosk.asleep and event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                    kiosk.wake()
                     continue
 
                 # Sidebar gets first look at every event
@@ -937,7 +987,7 @@ def main() -> int:
                 depth_server.push_frame(frame)
                 creature_counts = creatures.counts() if config.show_creatures else {"sharks": 0, "dinosaurs": 0}
                 sensor_name = source.get_sensor_name()
-                simulated = sensor_name.startswith(("Mouse", "Dummy"))
+                simulated = _is_simulated(source)
                 bridge_up = bridge_enabled and app_bridge.is_connected()
                 if dunebox_state is not None and (
                     not bridge_up or time.monotonic() - dunebox_state_time > 5.0
@@ -994,7 +1044,10 @@ def main() -> int:
                         "can_reset": hasattr(source, "reset"),
                         "depth_mm": [config.min_depth_mm, config.max_depth_mm],
                         **surface_health.as_dict(),
+                        "auto_reconnect": config.sensor_auto_reconnect,
+                        "reconnect_attempts": reconnector.attempts,
                     },
+                    "kiosk": kiosk.status(datetime.now()),
                     "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
                     "dunebox": dunebox_state,
                     "dashboard": {
@@ -1154,6 +1207,51 @@ def main() -> int:
                             message = _toggle_timelapse(timelapse)
                         except OSError as exc:
                             ok, message = False, f"Couldn't start timelapse: {exc}"
+                    elif action == "toggle_schedule":
+                        config.kiosk_schedule = not config.kiosk_schedule
+                        kiosk.configure(enabled=config.kiosk_schedule)
+                        config.request_save()
+                        message = f"Opening hours {'on' if config.kiosk_schedule else 'off'}"
+                    elif action == "set_hours":
+                        if isinstance(value, str) and parse_hours(value):
+                            config.kiosk_hours = value
+                            kiosk.configure(hours=value)
+                            config.request_save()
+                            message = f"Open {value.replace('-', '–')}"
+                        else:
+                            ok, message = False, "Opening must be before closing, as HH:MM-HH:MM"
+                    elif action == "set_days":
+                        days = "".join(sorted(set(str(value or "")) & set("0123456")))
+                        if days:
+                            config.kiosk_days = days
+                            kiosk.configure(days=days)
+                            config.request_save()
+                            message = "Open days updated"
+                        else:
+                            ok, message = False, "Pick at least one day"
+                    elif action == "wake":
+                        kiosk.wake()
+                        message = "Awake until the next opening or closing time"
+                    elif action == "set_projector_host":
+                        host = str(value or "").strip()
+                        if host and not re.fullmatch(r"[A-Za-z0-9.\-:]{1,253}", host):
+                            ok, message = False, f"Not an IP address or host name: {host}"
+                        else:
+                            config.projector_host = host
+                            kiosk.set_projector_host(host, config.projector_password)
+                            config.request_save()
+                            message = f"Projector: {host}" if host else "Projector control off"
+                    elif action == "projector_power":
+                        if value not in ("on", "off"):
+                            ok, message = False, f"Unknown projector power: {value}"
+                        elif not kiosk.set_projector(value == "on"):
+                            ok, message = False, "Add the projector's IP address first"
+                        else:
+                            message = f"Turning the projector {value}"
+                    elif action == "toggle_auto_reconnect":
+                        config.sensor_auto_reconnect = not config.sensor_auto_reconnect
+                        config.request_save()
+                        message = f"Sensor auto-reconnect {'on' if config.sensor_auto_reconnect else 'off'}"
                     elif action == "calibrate_depth":
                         if not hasattr(source, "auto_calibrate_flat_surface"):
                             ok, message = False, f"{sensor_name} can't auto-calibrate depth"
@@ -1296,6 +1394,9 @@ def main() -> int:
 
             sidebar.update(dt)
             sidebar.draw(screen, config)
+
+            if kiosk.asleep:
+                screen.fill((0, 0, 0))
 
             pygame.display.flip()
     finally:
