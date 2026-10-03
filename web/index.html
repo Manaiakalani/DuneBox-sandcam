@@ -191,6 +191,10 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
     <fieldset class="group" id="system-controls" disabled>
       <legend class="group-title">Setup</legend>
       <div class="row row-stack">
+        <span class="row-label" id="check-label">Setup check</span>
+        <ul class="check-list" id="check-list" aria-labelledby="check-label"></ul>
+      </div>
+      <div class="row row-stack">
         <span class="row-label" id="smoothing-label">Smoothing</span>
         <div class="segmented segmented-3" role="radiogroup" aria-labelledby="smoothing-label" id="smoothing-group">
           <button type="button" role="radio" aria-checked="false" data-action="set_smoothing" data-value="responsive">Responsive</button>
@@ -233,9 +237,35 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
         <p><strong>Not linked.</strong> Start DuneBox (Magic-Sand) on this PC. It links to sandcam automatically and its water, lava and theme controls appear here.</p>
       </div>
       <div id="dunebox-live" hidden>
+        <div class="callout" id="db-calib" role="status" hidden>
+          <p class="callout-title">Calibrating</p>
+          <p class="callout-text" id="db-calib-text"></p>
+          <div class="button-row">
+            <button class="btn btn-primary" type="button" data-target="dunebox" data-action="calibration_confirm" id="db-calib-confirm">Confirm</button>
+            <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="calibration_cancel">Cancel</button>
+          </div>
+        </div>
         <div class="row">
           <span class="row-label">Water simulation</span>
           <button class="switch" type="button" role="switch" aria-checked="false" data-target="dunebox" data-action="toggle_water" aria-label="Water simulation"></button>
+        </div>
+        <div id="db-water-extra">
+          <div class="row row-stack">
+            <span class="row-label" id="evap-label">Evaporation</span>
+            <div class="segmented segmented-3" role="radiogroup" aria-labelledby="evap-label" id="evap-group">
+              <button type="button" role="radio" aria-checked="false" data-target="dunebox" data-action="set_evaporation" data-value="off">Off</button>
+              <button type="button" role="radio" aria-checked="false" data-target="dunebox" data-action="set_evaporation" data-value="slow">Slow</button>
+              <button type="button" role="radio" aria-checked="false" data-target="dunebox" data-action="set_evaporation" data-value="fast">Fast</button>
+            </div>
+            <p class="row-hint">Lakes slowly dry up so the sand doesn't flood over a long session.</p>
+          </div>
+          <div class="row">
+            <span class="row-label">Rain from hands</span>
+            <button class="switch" type="button" role="switch" aria-checked="false" data-target="dunebox" data-action="toggle_hand_rain" aria-label="Rain from hands"></button>
+          </div>
+          <div class="button-row">
+            <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="dry_water">Drain all water</button>
+          </div>
         </div>
         <div class="row">
           <span class="row-label">Lava instead of water</span>
@@ -249,6 +279,9 @@ FORM: Category standard (canon), chosen by Max with Vercel as the quality bar; s
           <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="cycle_theme">Next theme <span class="btn-meta" id="db-theme"></span></button>
           <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="erupt_volcano">Erupt volcano</button>
           <button class="btn btn-primary" type="button" data-target="dunebox" data-action="start_app" id="db-start" hidden>Start sandbox</button>
+        </div>
+        <div class="button-row" id="db-calib-actions">
+          <button class="btn btn-secondary" type="button" data-target="dunebox" data-action="full_calibration">Recalibrate everything</button>
         </div>
       </div>
     </fieldset>

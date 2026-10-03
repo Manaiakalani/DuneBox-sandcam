@@ -48,6 +48,7 @@ from diagnostics import show_startup_diagnostics
 from earthquake import EarthquakeDetector
 from ecosystem import EcosystemManager
 from game_modes import BUILTIN_TARGETS, GameManager
+from health import SurfaceHealth
 from interaction_engine import InteractionEngine
 from renderer import WATER_LEVEL, Renderer
 
@@ -95,7 +96,16 @@ DUNEBOX_COMMANDS = {
     "cycle_theme": "Theme changed",
     "toggle_day_night": "Day/night toggled",
     "start_app": "Asked DuneBox to start",
+    "dry_water": "Water drained",
+    "set_evaporation": "Evaporation updated",
+    "toggle_hand_rain": "Hand rain toggled",
+    "detect_sand_region": "Detecting the sand area",
+    "calibrate_projector": "Calibrating the projector",
+    "full_calibration": "Full calibration started",
+    "calibration_confirm": "Confirmed",
+    "calibration_cancel": "Calibration cancelled",
 }
+EVAPORATION_LEVELS = ("off", "slow", "fast")
 
 
 def _as_float(value: object) -> float | None:
@@ -435,6 +445,7 @@ def main() -> int:
     eco_mgr = EcosystemManager(render_w, render_h)
     eco_enabled = False
     timelapse = TimelapseRecorder(interval=config.timelapse_interval_s)
+    surface_health = SurfaceHealth()
     snapshots: list[dict] = []
     snapshots_dirty = True
     snapshots_checked = 0.0
@@ -726,6 +737,9 @@ def main() -> int:
 
             # ── render ────────────────────────────────────────────────────────
             frame = source.get_frame()
+            surface_health.update(
+                time.monotonic(), frame, config.max_depth_mm - config.min_depth_mm
+            )
             if frame is not None and config.sea_level_offset:
                 # Raising the sea is the same as lowering every height, so
                 # water, creatures, games and the dashboard all stay in step.
@@ -979,6 +993,7 @@ def main() -> int:
                         "can_calibrate": hasattr(source, "auto_calibrate_flat_surface"),
                         "can_reset": hasattr(source, "reset"),
                         "depth_mm": [config.min_depth_mm, config.max_depth_mm],
+                        **surface_health.as_dict(),
                     },
                     "bridge": {"enabled": bridge_enabled, "connected": bridge_up},
                     "dunebox": dunebox_state,
@@ -1004,8 +1019,13 @@ def main() -> int:
                             ok, message = False, "DuneBox (C++) isn't connected. Start it on this PC."
                         elif action not in DUNEBOX_COMMANDS:
                             ok, message = False, f"Unknown DuneBox command: {action}"
+                        elif action == "set_evaporation" and value not in EVAPORATION_LEVELS:
+                            ok, message = False, f"Unknown evaporation level: {value}"
                         else:
-                            app_bridge.send({"type": "command", "action": action})
+                            bmsg_out = {"type": "command", "action": action}
+                            if value is not None:
+                                bmsg_out["value"] = value
+                            app_bridge.send(bmsg_out)
                             message = DUNEBOX_COMMANDS[action]
                     elif action == "set_theme":
                         if value in SCHEMES:

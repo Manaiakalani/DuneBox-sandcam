@@ -549,6 +549,92 @@
     $("smoothing-hint").textContent = s.smoothing === "custom"
       ? "Custom values from the sandcam sidebar. Pick a preset to replace them."
       : "Responsive follows hands quickly; Stable hides flicker but lags.";
+    renderChecks(setupChecks(s));
+  }
+
+  // Each check: { name, tone: ok|warn|err|idle, detail, fix?: [label, action, value, target] }
+  function setupChecks(s) {
+    const sensor = s.sensor || {};
+    const checks = [];
+    checks.push(!sensor.connected
+      ? { name: "Depth camera", tone: "err", detail: `${sensor.name || "Sensor"} disconnected. Replug USB and power.` }
+      : sensor.simulated
+        ? { name: "Depth camera", tone: "warn", detail: "Not found. The simulator is standing in." }
+        : { name: "Depth camera", tone: "ok", detail: sensor.name });
+
+    const range = sensor.depth_mm ? `${sensor.depth_mm[0]}–${sensor.depth_mm[1]} mm` : "the depth range";
+    if (sensor.in_range_pct == null) {
+      checks.push({ name: "Sand in view", tone: "idle", detail: "Measuring…" });
+    } else {
+      const pct = sensor.in_range_pct;
+      checks.push({
+        name: "Sand in view",
+        tone: pct >= 95 ? "ok" : pct >= 80 ? "warn" : "err",
+        detail: pct >= 95 ? `${Math.round(pct)}% inside ${range}` : `${Math.round(100 - pct)}% is outside ${range}. Flatten the sand and recalibrate.`,
+        fix: pct < 95 && sensor.can_calibrate ? ["Calibrate", "calibrate_depth"] : null,
+      });
+    }
+
+    if (sensor.simulated) {
+      // Simulated terrain drifts on purpose, so flicker isn't meaningful
+    } else if (sensor.noise_mm == null) {
+      checks.push({ name: "Surface steadiness", tone: "idle", detail: "Measuring…" });
+    } else {
+      const n = sensor.noise_mm;
+      checks.push({
+        name: "Surface steadiness",
+        tone: n <= 2 ? "ok" : n <= 5 ? "warn" : "err",
+        detail: n <= 2 ? `Flicker under ${Math.max(1, Math.ceil(n))} mm` : `Flickers about ${Math.round(n)} mm. Keep hands clear, or smooth more.`,
+        fix: n > 2 && s.smoothing !== "stable" ? ["Use Stable", "set_smoothing", "stable"] : null,
+      });
+    }
+
+    if (s.fps != null) {
+      checks.push({
+        name: "Frame rate",
+        tone: s.fps >= 25 ? "ok" : s.fps >= 15 ? "warn" : "err",
+        detail: s.fps >= 25 ? `${Math.round(s.fps)} fps` : `${Math.round(s.fps)} fps. Close other apps or turn off creatures.`,
+      });
+    }
+
+    const d = s.dunebox;
+    if (d && d.roi_calibrated !== undefined) {
+      checks.push(d.roi_calibrated
+        ? { name: "Projector: sand area", tone: "ok", detail: "Detected" }
+        : { name: "Projector: sand area", tone: "warn", detail: "Not detected yet",
+            fix: ["Detect", "detect_sand_region", null, "dunebox"] });
+      checks.push(d.projector_calibrated
+        ? { name: "Projector: alignment", tone: "ok", detail: "Calibrated" }
+        : { name: "Projector: alignment", tone: "warn", detail: "Not calibrated yet",
+            fix: ["Calibrate", "calibrate_projector", null, "dunebox"] });
+    }
+    return checks;
+  }
+
+  let renderedChecks = "";
+  function renderChecks(checks) {
+    const key = JSON.stringify(checks);
+    if (key === renderedChecks) return;
+    renderedChecks = key;
+    $("check-list").replaceChildren(...checks.map((c) => {
+      const li = document.createElement("li");
+      const dot = document.createElement("span");
+      dot.className = "status-dot";
+      dot.dataset.tone = c.tone;
+      dot.setAttribute("aria-hidden", "true");
+      const text = document.createElement("span");
+      const name = Object.assign(document.createElement("span"), { className: "check-name", textContent: c.name });
+      const detail = Object.assign(document.createElement("span"), { className: "check-detail", textContent: c.detail });
+      text.append(name, detail);
+      li.append(dot, text);
+      if (c.fix) {
+        const [label, action, value, target] = c.fix;
+        const b = smallButton(label, action, value ?? "", `${label}: ${c.name}`);
+        if (target) b.dataset.target = target;
+        li.append(b);
+      }
+      return li;
+    }));
   }
 
   const DUNEBOX_STATES = {
@@ -582,6 +668,22 @@
     setSwitch('#dunebox-live [data-action="toggle_day_night"]', d.day_night);
     $("db-theme").textContent = d.theme ? `(${d.theme})` : "";
     $("db-start").hidden = d.app_state !== "setup";
+
+    // Builds without water and calibration controls don't report these fields
+    $("db-water-extra").hidden = d.evaporation === undefined;
+    if (d.evaporation !== undefined) {
+      for (const b of $("evap-group").children) {
+        const on = b.dataset.value === d.evaporation;
+        b.setAttribute("aria-checked", String(on));
+        b.tabIndex = on ? 0 : -1;
+      }
+      setSwitch('#dunebox-live [data-action="toggle_hand_rain"]', d.hand_rain);
+    }
+    const calibrating = d.app_state === "calibrating";
+    $("db-calib-actions").hidden = d.roi_calibrated === undefined || calibrating;
+    $("db-calib").hidden = !calibrating;
+    $("db-calib-text").textContent = d.calibration_text || "Follow the prompts on the projector.";
+    $("db-calib-confirm").hidden = !d.awaiting_confirm;
   }
 
   function renderPairing(dash) {
