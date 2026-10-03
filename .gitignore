@@ -13,3 +13,7 @@ sandcam-settings.json
 # transient launch log
 _launch.log
 *.log
+
+# Operator output: saved terrains and timelapse frames
+assets/terrains/saved/
+assets/timelapse/
