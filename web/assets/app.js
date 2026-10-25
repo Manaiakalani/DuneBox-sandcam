@@ -958,7 +958,7 @@
     const empty = $("dunebox-empty").querySelector("p");
     empty.innerHTML = s.bridge && !s.bridge.enabled
       ? "<strong>Link is off.</strong> Press <kbd>B</kbd> in sandcam to link with DuneBox (C++)."
-      : "<strong>Not linked.</strong> Start DuneBox (Magic-Sand) on this PC. It links to sandcam automatically and its water, lava and theme controls appear here.";
+      : "<strong>Not linked.</strong> Start DuneBox (C++) on this PC. It links to sandcam automatically and its water, lava and theme controls appear here.";
     const linkOff = s.bridge && !s.bridge.enabled;
     if (!d) {
       setStatus($("db-state"), "idle", linkOff ? "Link off" : "Not linked");

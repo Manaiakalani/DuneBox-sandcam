@@ -5,7 +5,7 @@
 .DESCRIPTION
     Starts sandcam and restarts it whenever it exits or crashes, waiting longer
     between restarts if it keeps failing. With -WithDuneBox it also supervises
-    the C++ Magic-Sand app (..\DuneBox\bin\Magic-Sand.exe).
+    DuneBox (C++) (..\DuneBox\bin\Magic-Sand.exe).
 
     -Install registers a Windows scheduled task that runs this watchdog when you
     sign in, so the sandbox comes back by itself after a reboot or power cut.

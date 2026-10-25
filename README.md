@@ -2,7 +2,7 @@
 
 > *The hackable Python AR sandbox.*
 
-A lightweight, cross-platform augmented reality sandbox built with Python, pygame, and libfreenect. Features biome-aware creatures, ArUco marker triggers, and an AI guide — designed for rapid prototyping and easy customization.
+A lightweight augmented reality sandbox for Windows, built with Python and pygame. The default depth sensor is a Kinect v2 through the Kinect for Windows SDK. Features biome-aware creatures, ArUco marker triggers, and an AI guide.
 
 ![Status](https://img.shields.io/badge/status-proof%20of%20concept-orange)
 ![Language](https://img.shields.io/badge/lang-Python-yellow)
@@ -20,29 +20,31 @@ A lightweight, cross-platform augmented reality sandbox built with Python, pygam
 
 | Component | Recommendation |
 |---|---|
-| **Depth Sensor** | Kinect v1 (Xbox 360) — default, or see Supported Sensors below |
+| **Depth Sensor** | Kinect v2 (Xbox One) with the Kinect for Windows SDK. That is the default. |
 | **Projector** | Any with HDMI input |
-| **PC** | Any modern computer — no GPU needed |
+| **PC** | Windows 10/11. Other systems can still run the mouse simulator. |
 
 ## Supported Sensors
 
+The Windows install defaults to `kinect_v2_sdk`.
+
 | Sensor | Config value | Library | Resolution | Range |
 |---|---|---|---|---|
-| Kinect v1 (Xbox 360) | `kinect_v1` | libfreenect (bundled) | 640×480 | 0.4–4.0 m |
-| Kinect v2 (Xbox One) — native | `kinect_v2` | pylibfreenect2 (Linux/macOS, manual install) | 512×424 | 0.5–4.5 m |
-| Kinect v2 (Xbox One) — Windows SDK | `kinect_v2_sdk` | pykinect2 + comtypes (Windows, `kinect-v2` extra) | 512×424 | 0.5–4.5 m |
+| Kinect v2 (Xbox One), Windows SDK, default | `kinect_v2_sdk` | pykinect2 + comtypes (Windows, `kinect-v2` extra) | 512×424 | 0.5–4.5 m |
+| Kinect v1 (Xbox 360) | `kinect_v1` | libfreenect (bundled `freenect.dll`) | 640×480 | 0.4–4.0 m |
+| Kinect v2 (Xbox One), native | `kinect_v2` | pylibfreenect2 (Linux/macOS, manual install) | 512×424 | 0.5–4.5 m |
 | Orbbec Femto Bolt | `orbbec` | pyorbbecsdk or pyk4a | 640×576 | 0.25–5.5 m |
 | Orbbec Astra | `orbbec` | pyorbbecsdk | 640×480 | 0.6–8.0 m |
 | Intel RealSense D435 | `realsense` | pyrealsense2 | 1280×720 | 0.1–10 m |
 | Intel RealSense L515 | `realsense` | pyrealsense2 | 1024×768 | 0.25–9 m |
-| Mouse simulator | `mouse_simulator` | — (built-in) | configurable | N/A |
+| Mouse simulator | `mouse_simulator` | (built-in) | configurable | N/A |
 
 ### Switching sensors
 
 Edit `sandcam-settings.json`:
 ```json
 {
-  "sensor_type": "kinect_v2",
+  "sensor_type": "kinect_v2_sdk",
   "sensor_fallback": "mouse_simulator"
 }
 ```
@@ -50,22 +52,22 @@ Edit `sandcam-settings.json`:
 ### Installing sensor libraries
 
 ```bash
-# Kinect V2 on Windows via the official Microsoft SDK (RECOMMENDED on Windows)
-# This is installed automatically by `uv sync --extra kinect-v2` or `pip install sandcam[kinect-v2]`
+# Default: Kinect v2 on Windows via the Kinect for Windows SDK.
+# `uv sync --extra kinect-v2` or `pip install sandcam[kinect-v2]` installs the Python bindings.
 pip install pykinect2 comtypes
-# Also install the Kinect for Windows SDK 2.0 (provides the USB driver + Kinect20.dll):
+# Also install the Kinect for Windows SDK 2.0 (USB driver + Kinect20.dll):
 #   https://www.microsoft.com/en-us/download/details.aspx?id=44561
-# Requires the Kinect Adapter on a true USB 3.0 port. Then set
-#   "sensor_type": "kinect_v2_sdk" in sandcam-settings.json.
+# Requires the Kinect Adapter on a true USB 3.0 port.
 # Once the sensor is mounted top-down over the sandbox, press the "A" key in the
 # app to auto-calibrate the depth range from the flat sand surface.
 
-# Kinect V2 on Linux/macOS via libfreenect2 (MANUAL install — not in pyproject extras)
-pip install pylibfreenect2
-# Also needs libfreenect2 native library:
-#   macOS: brew install libfreenect2
-#   Linux: see https://github.com/OpenKinect/libfreenect2
-# Then set "sensor_type": "kinect_v2" in sandcam-settings.json.
+# Kinect v1 on Windows uses the bundled freenect.dll and libusb-1.0.dll.
+# Set "sensor_type": "kinect_v1". See THIRD_PARTY_LICENSES.md.
+
+# Kinect v2 on Linux or macOS is not the default. Install pylibfreenect2
+# yourself (it is not a pyproject extra) and the native libfreenect2 library:
+#   https://github.com/OpenKinect/libfreenect2
+# Then set "sensor_type": "kinect_v2".
 
 # Orbbec (native SDK)
 pip install pyorbbecsdk
@@ -87,7 +89,7 @@ Double-click **`run.bat`** — it installs Python and dependencies automatically
 
 ### Put it on your desktop (easiest)
 Double-click **`Install Desktop Shortcuts.cmd`** once. It adds a **DuneBox** icon
-to your desktop (plus a **DuneBox (Magic-Sand C++)** icon if that repo sits next
+to your desktop (plus a **DuneBox (C++)** icon if that repo sits next
 to this one). After that, just double-click **DuneBox** to run — no terminal,
 no commands. The installer is safe to re-run; it refreshes the icons in place.
 

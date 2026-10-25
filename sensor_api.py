@@ -2,7 +2,7 @@
 Pluggable depth sensor abstraction.
 
 Supports multiple backends: KinectV1, KinectV2, Orbbec, RealSense, MouseSimulator.
-Configure via sandcam-settings.json: {"sensor_type": "kinect_v1"}
+Configure via sandcam-settings.json: {"sensor_type": "kinect_v2_sdk"}
 """
 
 from __future__ import annotations
@@ -741,13 +741,10 @@ class KinectV2Sensor(DepthSensor):
             import pylibfreenect2  # noqa: F401
         except ImportError as exc:
             raise ImportError(
-                "Kinect V2 support requires pylibfreenect2.\n"
-                "Install:  pip install pylibfreenect2\n"
-                "Also requires libfreenect2 system library:\n"
-                "  macOS:   brew install libfreenect2\n"
-                "  Ubuntu:  see https://github.com/OpenKinect/libfreenect2#linux\n"
-                "  Windows: download from https://github.com/OpenKinect/libfreenect2/releases\n"
-                "Docs: https://github.com/r9y9/pylibfreenect2"
+                "The native Kinect v2 backend needs pylibfreenect2 and libfreenect2.\n"
+                "Windows defaults to kinect_v2_sdk instead.\n"
+                "Native install notes: https://github.com/OpenKinect/libfreenect2\n"
+                "Python bindings: https://github.com/r9y9/pylibfreenect2"
             ) from exc
 
     def connect(self) -> bool:
@@ -1425,14 +1422,14 @@ def create_sensor(config: dict, **kwargs) -> DepthSensor:
 
     Expected keys (all optional):
         sensor_type     – one of: kinect_v1, kinect_v2, kinect_v2_sdk, orbbec,
-                          realsense, mouse_simulator, dummy  (default: kinect_v1)
+                          realsense, mouse_simulator, dummy  (default: kinect_v2_sdk)
         sensor_fallback – fallback type if the primary fails to connect
                           (default: mouse_simulator)
 
     Extra *kwargs* (width, height, min_depth_mm, …) are forwarded to
     the sensor constructor.
     """
-    sensor_type = config.get("sensor_type", "kinect_v1")
+    sensor_type = config.get("sensor_type", "kinect_v2_sdk")
     fallback = config.get("sensor_fallback", "mouse_simulator")
 
     sensor = _try_create(sensor_type, kwargs)

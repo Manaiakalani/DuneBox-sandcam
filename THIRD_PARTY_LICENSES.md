@@ -10,6 +10,4 @@
 - **License**: LGPL-2.1
 - **Purpose**: USB device access library (required by libfreenect)
 
-These DLLs are pre-compiled and bundled for Windows convenience so users
-don't need to compile C libraries. On macOS/Linux, install via package
-manager instead (`brew install libfreenect` / `apt install freenect`).
+These two DLLs are the Windows Kinect v1 driver, bundled so a v1 camera works without compiling libfreenect. The Windows install defaults to Kinect v2, which uses Kinect20.dll from the Kinect for Windows Runtime rather than these files. The upstream links above are the license texts for the LGPL and the Apache-2.0 / GPL-2.0 dual license.

@@ -18,7 +18,7 @@ from buttons import clean_map
 from classroom import LANGUAGES
 from kiosk import parse_hours
 
-# ── palette (DESIGN.md tokens, shared with the web dashboard) ────────────────
+# ── palette (DuneBox-docs DESIGN.md tokens, shared with the web dashboard) ──
 _BG         = (10, 10, 10)
 _SURFACE    = (17, 17, 17)
 _SURFACE_2  = (23, 23, 23)
@@ -246,7 +246,7 @@ class Config:
             "mouse_simulator", "dummy",
         }
         if config.sensor_type not in _VALID_SENSORS:
-            config.sensor_type = "kinect_v1"
+            config.sensor_type = "kinect_v2_sdk"
         if config.sensor_fallback not in _VALID_SENSORS:
             config.sensor_fallback = "mouse_simulator"
 

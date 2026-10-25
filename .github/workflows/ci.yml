@@ -23,6 +23,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Keep design docs as pointers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in DESIGN.md PRODUCT.md; do
+            lines=$(wc -l < "$f")
+            if [ "$lines" -gt 40 ]; then
+              echo "$f is $lines lines. Edit the copy in Manaiakalani/DuneBox-docs instead."
+              exit 1
+            fi
+          done
+
       - name: Install uv
         uses: astral-sh/setup-uv@v8.2.0
 

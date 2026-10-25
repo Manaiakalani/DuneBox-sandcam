@@ -215,8 +215,8 @@
     "Link off": "Enlace apagado",
     "Simulation": "Simulación",
     "Not linked.": "Sin conectar.",
-    "Start DuneBox (Magic-Sand) on this PC. It links to sandcam automatically and its water, lava and theme controls appear here.":
-      "Abre DuneBox (Magic-Sand) en este PC. Se conecta solo con sandcam y aquí aparecen sus controles de agua, lava y colores.",
+    "Start DuneBox (C++) on this PC. It links to sandcam automatically and its water, lava and theme controls appear here.":
+      "Abre DuneBox (C++) en este PC. Se conecta solo con sandcam y aquí aparecen sus controles de agua, lava y colores.",
     "Running": "Funcionando",
     "Starting": "Arrancando",
     "Setup: not calibrated yet": "Configuración: aún sin calibrar",

@@ -9,7 +9,7 @@
       * "DuneBox"                  -> this app (DuneBox-sandcam), works today,
                                       drives terrain live from the Kinect v2
                                       (or the mouse simulator if no sensor).
-      * "DuneBox (Magic-Sand C++)" -> the sibling C++ app (..\DuneBox), if that
+      * "DuneBox (C++)"            -> the sibling C++ renderer (..\DuneBox), if that
                                       repo is present next to this one.
 
     The script is idempotent: re-running it just updates the shortcuts in place.
@@ -88,15 +88,25 @@ if (-not (Test-Path $sandcamBat)) { throw "Missing launcher: $sandcamBat" }
 Set-DesktopShortcut -Name 'DuneBox' -Target $sandcamBat -WorkingDirectory $RepoRoot `
     -IconPath $sandcamIcon -Description 'DuneBox AR sandbox (Kinect v2 / mouse simulator)'
 
-# 2) Secondary: the sibling C++ Magic-Sand app, if its repo is present.
+# 2) Secondary: the sibling C++ renderer, if its repo is present.
+#    The executable stays Magic-Sand.exe; only the shortcut label changes.
 $cppRoot = Join-Path (Split-Path $RepoRoot -Parent) 'DuneBox'
 $cppBat  = Join-Path $cppRoot 'run.bat'
 if (Test-Path $cppBat) {
     $cppIcon = Join-Path $cppRoot 'icon.ico'
-    Set-DesktopShortcut -Name 'DuneBox (Magic-Sand C++)' -Target $cppBat -WorkingDirectory $cppRoot `
-        -IconPath $cppIcon -Description 'DuneBox Magic-Sand C++ renderer'
+    Set-DesktopShortcut -Name 'DuneBox (C++)' -Target $cppBat -WorkingDirectory $cppRoot `
+        -IconPath $cppIcon -Description 'DuneBox C++ renderer'
 } else {
     Write-Host "  [ ] Sibling C++ repo not found at $cppRoot - skipping that shortcut."
+}
+
+$oldCpp = Join-Path $Desktop 'DuneBox (Magic-Sand C++).lnk'
+if ((Test-Path $cppBat) -and (Test-Path $oldCpp)) {
+    $old = $Shell.CreateShortcut($oldCpp)
+    if ([string]::Equals($old.TargetPath, $cppBat, [StringComparison]::OrdinalIgnoreCase)) {
+        Remove-Item $oldCpp -Force
+        Write-Host "  [-] Removed previous DuneBox (Magic-Sand C++).lnk (now DuneBox (C++))"
+    }
 }
 
 # 3) Remove the legacy shortcut now superseded by "DuneBox".
