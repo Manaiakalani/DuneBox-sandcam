@@ -85,3 +85,29 @@ jobs:
 
       - name: Unit tests
         run: uv run --no-sync python -m unittest test_ai_guide test_vision test_bridge test_creatures test_volcano test_sensor_api test_game_modes test_renderer test_depth_server test_ui test_terrain_io test_health test_kiosk test_buttons test_classroom test_depth_relay -v
+
+  powershell:
+    name: PowerShell parse
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Parse check (fail on syntax errors)
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Path . -Filter *.ps1 -File | ForEach-Object {
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) {
+              $failed = $true
+              Write-Host "::group::Parse errors in $($_.Name)"
+              $errors | ForEach-Object { Write-Host "::error::$($_.Extent.File): line $($_.Extent.StartLineNumber): $($_.Message)" }
+              Write-Host "::endgroup::"
+            } else {
+              Write-Host "OK: $($_.Name)"
+            }
+          }
+          if ($failed) { exit 1 }

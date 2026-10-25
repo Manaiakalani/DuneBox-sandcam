@@ -85,7 +85,7 @@ pip install sandcam[all-sensors]
 ## Quick Start
 
 ### Windows (one click)
-Double-click **`run.bat`** — it installs Python and dependencies automatically, then launches.
+Double-click **`run.bat`** — it installs Python if needed, fast-forwards this checkout, syncs dependencies, then launches. A failed update still starts the copy already on disk.
 
 ### Put it on your desktop (easiest)
 Double-click **`Install Desktop Shortcuts.cmd`** once. It adds a **DuneBox** icon

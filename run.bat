@@ -1,7 +1,7 @@
 @echo off
-:: DuneBox-sandcam Launcher - installs Python + deps if needed, then runs
-setlocal enabledelayedexpansion
-
+:: DuneBox-sandcam Launcher - installs Python + uv if needed, fast-forwards
+:: this checkout, then runs. A failed update still starts the copy on disk.
+:: Path additions stay above setlocal so a one-time relaunch can still see them.
 title DuneBox sandcam
 
 cd /d "%~dp0"
@@ -22,7 +22,23 @@ if %errorlevel% neq 0 (
     set "PATH=%PATH%;%USERPROFILE%\.local\bin"
 )
 
-:: Install dependencies + run
+setlocal enabledelayedexpansion
+
+:: --updated: this file was replaced by the pull below, and the new copy is
+:: already running. Skip a second pull. The parenthesis block is read in full
+:: before git runs, so the relaunch still happens if the pull replaces run.bat.
+if /I "%~1"=="--updated" goto :launch
+
+(
+echo  Checking for sandcam updates...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0update-checkout.ps1"
+if errorlevel 10 (
+    "%~f0" --updated
+    exit /b 0
+)
+)
+
+:launch
 echo  Starting DuneBox sandcam...
 echo  (No Kinect? No problem - mouse simulator mode activates automatically)
 echo.
