@@ -9,6 +9,10 @@
     file that this pull just replaced.
 
     A missing git checkout, a failed pull, a failed sync, or a timeout exits 0.
+
+    After a successful pull and dependency sync, the desktop shortcut skips
+    this check for 6 hours. A failed check does not count. The kiosk does not
+    call this script.
 #>
 [CmdletBinding()]
 param()
@@ -47,7 +51,35 @@ function Get-LauncherHash {
     return (Get-FileHash -Algorithm SHA256 -Path $Launcher).Hash
 }
 
+$RememberHours = 6
+$stampPath = $null
+if ($env:LOCALAPPDATA) {
+    $stampPath = Join-Path $env:LOCALAPPDATA 'DuneBox\sandcam-checkout.stamp'
+}
+
+function Write-CheckStamp {
+    if (-not $stampPath) { return }
+    try {
+        $dir = Split-Path -Parent $stampPath
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        Set-Content -LiteralPath $stampPath -Value (Get-Date -Format o) -Encoding ascii
+    } catch {}
+}
+
+function Test-CheckStampFresh {
+    if (-not $stampPath) { return $false }
+    if (-not (Test-Path -LiteralPath $stampPath)) { return $false }
+    $age = (Get-Date) - (Get-Item -LiteralPath $stampPath).LastWriteTime
+    return $age.TotalHours -lt $RememberHours
+}
+
 try {
+    if (Test-CheckStampFresh) {
+        Write-Host "  sandcam was checked in the last $RememberHours hours."
+        exit 0
+    }
     $before = Get-LauncherHash
     if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
         Write-Host '  No sandcam git checkout. Starting the installed copy.'
@@ -84,6 +116,7 @@ try {
             -WorkingDirectory $Root -TimeoutSec 180
         if ($code -eq 0) {
             Write-Host '  sandcam dependencies are in sync.'
+            Write-CheckStamp
         } elseif ($code -eq 124) {
             Write-Host '  sandcam dependency sync timed out. Starting the current checkout.'
         } else {
