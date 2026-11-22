@@ -104,6 +104,7 @@ class PJLink:
                 if not self.password:
                     raise PermissionError("Projector needs a PJLink password")
                 salt = greeting.split(" ", 2)[2]
+                # PJLink class 1 requires MD5 of salt plus password.
                 prefix = hashlib.md5((salt + self.password).encode()).hexdigest()
             elif not greeting.startswith("PJLINK 0"):
                 raise ConnectionError(f"Not a PJLink projector: {greeting!r}")

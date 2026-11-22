@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,6 +34,20 @@ class SmoothingPresetTests(unittest.TestCase):
         config = Config()
         self.assertFalse(apply_smoothing_preset(config, "turbo"))
         self.assertEqual(smoothing_preset_of(config), "balanced")
+
+
+class SettingsFilePermissionTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "file mode 0o600 is a POSIX concern")
+    def test_save_uses_owner_only_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            with mock.patch.object(ui, "CONFIG_PATH", path):
+                config = Config()
+                config.projector_password = "pj-secret"
+                config.save()
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(raw["projector_password"], "pj-secret")
 
 
 class ContourConfigTests(unittest.TestCase):
