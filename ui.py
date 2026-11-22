@@ -8,6 +8,7 @@ single source of truth read by main.py each frame.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -75,6 +76,30 @@ LLM_BACKENDS = [
 ]
 CONFIG_PATH = pathlib.Path(__file__).with_name("sandcam-settings.json")
 EXAMPLE_CONFIG_PATH = pathlib.Path(__file__).with_name("sandcam-settings.example.json")
+
+
+def _write_private_text(path: pathlib.Path, text: str) -> None:
+    """Replace path with text. The file is written privately (mode 0o600)."""
+    data = text.encode("utf-8")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    flags = os.O_CREAT | os.O_WRONLY | os.O_TRUNC
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    fd = os.open(tmp, flags, 0o600)
+    try:
+        try:
+            os.write(fd, data)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+        os.chmod(path, 0o600)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 _GUIDE_FONTS: tuple[pygame.font.Font, pygame.font.Font, pygame.font.Font] | None = None
 SLIDER_SPECS = {
     "min": {"label": "Min", "lo": 100, "hi": 2000, "kind": "int"},
@@ -351,9 +376,9 @@ class Config:
             "depth_server_max_fps": self.depth_server_max_fps,
             "dashboard_pin": self.dashboard_pin,
         }
-        CONFIG_PATH.write_text(
+        _write_private_text(
+            CONFIG_PATH,
             json.dumps(payload, indent=2, sort_keys=True),
-            encoding="utf-8",
         )
 
     def request_save(self) -> None:
